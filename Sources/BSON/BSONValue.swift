@@ -187,7 +187,7 @@ extension BSONValue {
 
 // MARK: - Literals
 
-extension BSONValue: ExpressibleByStringLiteral {
+extension BSONValue: ExpressibleByStringLiteral, ExpressibleByStringInterpolation {
     public init(stringLiteral value: String) { self = .string(value) }
 }
 

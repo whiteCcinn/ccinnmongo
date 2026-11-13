@@ -1,0 +1,128 @@
+import Foundation
+
+/// Bounded pool of connections to a single server.
+///
+/// Invariants (all mutated only inside the actor):
+/// - `openCount` counts idle + checked-out + being-created connections and never exceeds `maxSize`.
+/// - A waiter is resumed exactly once: with a connection, with `nil` (permission to create), or with an error.
+actor ConnectionPool {
+    typealias Factory = @Sendable () async throws -> MongoConnection
+
+    nonisolated let address: ServerAddress
+    nonisolated let maxSize: Int
+    private let factory: Factory
+
+    private var idle: [MongoConnection] = []
+    private var openCount = 0
+    private var waiters: [(id: UInt64, continuation: CheckedContinuation<MongoConnection?, any Error>)] = []
+    private var nextWaiterID: UInt64 = 0
+    private var isClosed = false
+
+    init(address: ServerAddress, maxSize: Int, factory: @escaping Factory) {
+        self.address = address
+        self.maxSize = max(1, maxSize)
+        self.factory = factory
+    }
+
+    var statistics: (open: Int, idle: Int, waiting: Int) { (openCount, idle.count, waiters.count) }
+
+    /// Runs `body` with an exclusively checked-out connection and always returns it to the pool.
+    nonisolated func withConnection<T: Sendable>(_ body: (MongoConnection) async throws -> T) async throws -> T {
+        let connection = try await checkout()
+        do {
+            let result = try await body(connection)
+            await checkin(connection)
+            return result
+        } catch {
+            await checkin(connection)
+            throw error
+        }
+    }
+
+    func checkout() async throws -> MongoConnection {
+        guard !isClosed else { throw MongoError(.connectionClosed, "The connection pool for \(address) is closed") }
+        while let connection = idle.popLast() {
+            if await !connection.isBroken { return connection }
+            openCount -= 1
+        }
+        if openCount < maxSize {
+            return try await createConnection()
+        }
+        let waiterID = nextWaiterID
+        nextWaiterID &+= 1
+        let handedOver: MongoConnection? = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                waiters.append((waiterID, continuation))
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(waiterID) }
+        }
+        if let handedOver { return handedOver }
+        // A slot was freed for us; `openCount` was already reserved by the releaser.
+        return try await createConnection(slotReserved: true)
+    }
+
+    func checkin(_ connection: MongoConnection) async {
+        let broken = await connection.isBroken
+        if isClosed || broken {
+            if !broken { await connection.close() }
+            openCount -= 1
+            handOffFreedSlot()
+            return
+        }
+        if !waiters.isEmpty {
+            let waiter = waiters.removeFirst()
+            waiter.continuation.resume(returning: connection)
+            return
+        }
+        idle.append(connection)
+    }
+
+    /// Closes idle connections now and checked-out ones when they are returned.
+    func close() async {
+        guard !isClosed else { return }
+        isClosed = true
+        let toClose = idle
+        idle.removeAll()
+        openCount -= toClose.count
+        for connection in toClose { await connection.close() }
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            waiter.continuation.resume(throwing: MongoError(.connectionClosed, "The connection pool for \(address) was closed"))
+        }
+    }
+
+    // MARK: Private
+
+    private func createConnection(slotReserved: Bool = false) async throws -> MongoConnection {
+        if !slotReserved { openCount += 1 }
+        do {
+            let connection = try await factory()
+            if isClosed {
+                await connection.close()
+                openCount -= 1
+                throw MongoError(.connectionClosed, "The connection pool for \(address) was closed")
+            }
+            return connection
+        } catch {
+            openCount -= 1
+            handOffFreedSlot()
+            throw error
+        }
+    }
+
+    /// Gives a freed slot to the oldest waiter, which will then create its own connection.
+    private func handOffFreedSlot() {
+        guard !waiters.isEmpty, openCount < maxSize, !isClosed else { return }
+        let waiter = waiters.removeFirst()
+        openCount += 1
+        waiter.continuation.resume(returning: nil)
+    }
+
+    private func cancelWaiter(_ id: UInt64) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = waiters.remove(at: index)
+        waiter.continuation.resume(throwing: MongoError.cancelled())
+    }
+}
