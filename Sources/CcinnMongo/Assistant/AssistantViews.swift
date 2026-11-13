@@ -152,7 +152,7 @@ private struct MessageView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "sparkles").foregroundStyle(Theme.accent).padding(.top, 2)
-                    Text(markdown(text)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                    MarkdownView(text).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let suggestion {
                     QueryCard(query: suggestion, status: nil, collection: collection, open: open)
@@ -161,10 +161,6 @@ private struct MessageView: View {
         case let .error(text):
             ErrorBanner(message: text)
         }
-    }
-
-    private func markdown(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
     }
 }
 
