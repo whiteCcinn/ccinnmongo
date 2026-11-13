@@ -82,6 +82,11 @@ public struct ConnectionString: Sendable, Equatable, CustomStringConvertible {
     public struct Option: Sendable, Equatable {
         public var name: String
         public var value: String
+
+        public init(name: String, value: String) {
+            self.name = name
+            self.value = value
+        }
     }
 
     public var scheme: Scheme
