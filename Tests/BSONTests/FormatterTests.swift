@@ -118,6 +118,18 @@ struct FormatterTests {
         }
     }
 
+    @Test func summaryOfHugeValuesIsBounded() {
+        let huge: BSONValue = .array((0..<200_000).map { .document(["i": .int32(Int32($0)), "s": .string(String(repeating: "x", count: 50))]) })
+        let clock = ContinuousClock()
+        let start = clock.now
+        let summary = BSONFormatter.summary(of: huge, maxLength: 90)
+        #expect(clock.now - start < .milliseconds(50))
+        #expect(summary.count <= 91)
+        #expect(summary.hasPrefix("[{ i: 0"))
+        let longString = BSONFormatter.summary(of: .string(String(repeating: "y", count: 5_000_000)), maxLength: 20)
+        #expect(longString.count <= 21)
+    }
+
     @Test func summaryTruncatesLongValues() {
         let long = String(repeating: "x", count: 500)
         let summary = BSONFormatter.summary(of: .string(long), maxLength: 20)

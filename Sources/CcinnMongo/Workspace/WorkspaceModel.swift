@@ -119,7 +119,7 @@ final class WorkspaceModel {
         do {
             let infos = try await client.listDatabases()
             let expanded = Set(databases.filter(\.isExpanded).map(\.name))
-            let previous = Dictionary(uniqueKeysWithValues: databases.map { ($0.name, $0) })
+            let previous = Dictionary(databases.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
             databases = infos.map { info in
                 let node = previous[info.name] ?? DatabaseNode(info: info)
                 node.info = info

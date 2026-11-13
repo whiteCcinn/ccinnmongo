@@ -12,6 +12,8 @@ enum AISettings {
     static let codexPath = "ai.path.codex"
     static let includeSamples = "ai.includeSamples"
     static let allowQueries = "ai.allowQueries"
+    /// Ask before every agent-requested query (always on for agents that are not tool-free).
+    static let approveQueries = "ai.approveQueries"
 }
 
 /// Discovers installed agent CLIs and creates configured agents.
@@ -73,7 +75,12 @@ struct AIPrivacyNote: View {
 
     var body: some View {
         Label {
-            Text("Your question, field names\(UserDefaults.standard.bool(forKey: AISettings.includeSamples) ? ", sample documents" : "") and results of read-only queries are sent to \(provider.map(vendor) ?? "the selected assistant"). Connection details and passwords never leave CcinnMongo.")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your question, field names\(UserDefaults.standard.bool(forKey: AISettings.includeSamples) ? ", sample documents" : "") and results of read-only queries are sent to \(provider.map(vendor) ?? "the selected assistant"). Connection details and passwords never leave CcinnMongo.")
+                if provider?.isToolFree == false {
+                    Text("Codex can read files on this Mac inside its read-only sandbox, so CcinnMongo asks you before running any query it proposes.")
+                }
+            }
         } icon: {
             Image(systemName: "lock.shield")
         }

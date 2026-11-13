@@ -35,10 +35,26 @@ public final class SSHTunnel: Sendable {
     public let remote: ServerAddress
     private let process: OSAllocatedUnfairLock<Process?>
 
+    /// Every running tunnel process, so they can be stopped synchronously when the app quits.
+    private static let registry = OSAllocatedUnfairLock<[Int32: Process]>(uncheckedState: [:])
+
+    /// Supervises ssh: forwards its arguments, kills it when the app process disappears (even after a
+    /// crash) or when the wrapper itself is terminated, and exits with ssh's status.
+    static let watchdogScript = """
+    /usr/bin/ssh "$@" &
+    ssh_pid=$!
+    trap 'kill "$ssh_pid" 2>/dev/null; exit 0' TERM INT HUP
+    while kill -0 "$CCINNMONGO_PARENT_PID" 2>/dev/null && kill -0 "$ssh_pid" 2>/dev/null; do sleep 1; done
+    kill "$ssh_pid" 2>/dev/null
+    wait "$ssh_pid"
+    """
+
     private init(localPort: Int, remote: ServerAddress, process: Process) {
         self.localPort = localPort
         self.remote = remote
         self.process = OSAllocatedUnfairLock(uncheckedState: process)
+        let pid = process.processIdentifier
+        Self.registry.withLockUnchecked { $0[pid] = process }
     }
 
     deinit {
@@ -56,7 +72,18 @@ public final class SSHTunnel: Sendable {
             defer { current = nil }
             return current
         }
-        if let running, running.isRunning { running.terminate() }
+        guard let running else { return }
+        Self.registry.withLockUnchecked { _ = $0.removeValue(forKey: running.processIdentifier) }
+        if running.isRunning { running.terminate() }
+    }
+
+    /// Stops every tunnel immediately (call from `applicationWillTerminate`).
+    public static func terminateAll() {
+        let processes = registry.withLockUnchecked { all -> [Process] in
+            defer { all.removeAll() }
+            return Array(all.values)
+        }
+        for process in processes where process.isRunning { process.terminate() }
     }
 
     /// Starts ssh and waits until the forwarded port accepts connections.
@@ -67,17 +94,28 @@ public final class SSHTunnel: Sendable {
         let askPass = try AskPassHelper.shared.path()
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = arguments
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", watchdogScript, "ccinnmongo-ssh"] + arguments
         var environment = ProcessInfo.processInfo.environment
         environment["SSH_ASKPASS"] = askPass
         environment["SSH_ASKPASS_REQUIRE"] = "force"
         environment["DISPLAY"] = environment["DISPLAY"] ?? ":0"
         environment["CCINNMONGO_ASKPASS_SECRET"] = secret ?? ""
+        environment["CCINNMONGO_PARENT_PID"] = String(getpid())
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
+        // Drain stderr continuously: an undrained pipe would block ssh (and every forwarded connection).
         let stderr = Pipe()
+        let collector = StderrCollector()
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                collector.append(data)
+            }
+        }
         process.standardError = stderr
 
         do {
@@ -90,8 +128,10 @@ public final class SSHTunnel: Sendable {
         let deadline = ContinuousClock.now + .seconds(timeout)
         while ContinuousClock.now < deadline {
             if !process.isRunning {
-                let output = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                throw MongoError(.sshTunnel, describeFailure(output, configuration: configuration))
+                // Give the readability handler a moment to deliver the final bytes.
+                try? await Task.sleep(for: .milliseconds(100))
+                tunnel.close()
+                throw MongoError(.sshTunnel, describeFailure(collector.text, configuration: configuration))
             }
             if canConnect(port: localPort) { return tunnel }
             do {
@@ -191,6 +231,21 @@ public final class SSHTunnel: Sendable {
         }
         return result == 0
     }
+}
+
+/// Keeps the most recent stderr output of ssh (bounded) for error messages.
+final class StderrCollector: Sendable {
+    private static let limit = 16 * 1024
+    private let buffer = OSAllocatedUnfairLock(initialState: Data())
+
+    func append(_ data: Data) {
+        buffer.withLock { buffer in
+            buffer.append(data)
+            if buffer.count > Self.limit { buffer = Data(buffer.suffix(Self.limit)) }
+        }
+    }
+
+    var text: String { String(decoding: buffer.withLock { $0 }, as: UTF8.self) }
 }
 
 /// Writes (once per process) a tiny askpass script that prints the secret passed via the environment.

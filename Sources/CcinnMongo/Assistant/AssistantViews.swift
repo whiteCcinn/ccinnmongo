@@ -68,7 +68,8 @@ struct AssistantView: View {
                         emptyState
                     }
                     ForEach(model.messages) { message in
-                        MessageView(message: message, collection: model.namespace.collection, open: model.open)
+                        MessageView(message: message, collection: model.namespace.collection, open: model.open,
+                                    decide: decisionHandler(for: message))
                             .id(message.id)
                     }
                     if model.isRunning {
@@ -86,6 +87,12 @@ struct AssistantView: View {
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(model.messages.last?.id, anchor: .bottom) }
             }
         }
+    }
+
+    private func decisionHandler(for message: AssistantModel.Message) -> ((Bool) -> Void)? {
+        guard model.pendingApprovalID == message.id else { return nil }
+        let model = self.model
+        return { approved in model.decide(approved) }
     }
 
     private var emptyState: some View {
@@ -134,6 +141,7 @@ private struct MessageView: View {
     let message: AssistantModel.Message
     let collection: String
     let open: (AssistantQuery) -> Void
+    var decide: ((Bool) -> Void)?
 
     var body: some View {
         switch message.kind {
@@ -147,7 +155,7 @@ private struct MessageView: View {
                     .background(Theme.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
             }
         case let .query(query, status):
-            QueryCard(query: query, status: status, collection: collection, open: open)
+            QueryCard(query: query, status: status, collection: collection, open: open, decide: decide)
         case let .answer(text, suggestion):
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
@@ -169,6 +177,7 @@ private struct QueryCard: View {
     let status: AssistantModel.Message.QueryStatus?
     let collection: String
     let open: (AssistantQuery) -> Void
+    var decide: ((Bool) -> Void)?
     @State private var showResults = false
     @State private var showFullQuery = false
 
@@ -202,6 +211,16 @@ private struct QueryCard: View {
                 .buttonStyle(.link)
                 .font(.caption)
             }
+            if case .awaitingApproval? = status, let decide {
+                HStack(spacing: 8) {
+                    Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+                    Text("The assistant wants to run this read-only query.").font(.callout)
+                    Spacer()
+                    Button("Skip") { decide(false) }
+                    Button("Run Query") { decide(true) }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
             if case let .finished(result)? = status, result.count == nil, !result.documents.isEmpty {
                 DisclosureGroup(isExpanded: $showResults) {
                     ScrollView(.horizontal) {
@@ -226,6 +245,10 @@ private struct QueryCard: View {
         switch status {
         case nil:
             Text("suggested").font(.caption).foregroundStyle(.secondary)
+        case .awaitingApproval?:
+            Text("awaiting approval").font(.caption.weight(.medium)).foregroundStyle(.orange)
+        case .declined?:
+            Text("skipped").font(.caption).foregroundStyle(.secondary)
         case .running?:
             HStack(spacing: 4) { ProgressView().controlSize(.mini); Text("running").font(.caption) }
         case let .finished(result)?:
@@ -361,17 +384,20 @@ struct AIGeneratePopover: View {
                     isRunning = false
                     return
                 }
+                var applied = query
                 if target == .pipeline, query.kind != .aggregate {
                     var pipeline: [BSONDocument] = []
                     if !query.filter.isEmpty { pipeline.append(["$match": .document(query.filter)]) }
                     if let sort = query.sort { pipeline.append(["$sort": .document(sort)]) }
                     if let limit = query.limit { pipeline.append(["$limit": .int(limit)]) }
-                    tab.apply(AssistantQuery(kind: .aggregate, pipeline: pipeline))
-                } else {
-                    tab.apply(query)
+                    applied = AssistantQuery(kind: .aggregate, pipeline: pipeline)
                 }
                 isRunning = false
-                isPresented = false
+                if let problem = tab.apply(applied) {
+                    error = problem
+                } else {
+                    isPresented = false
+                }
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = describe(error)
@@ -390,6 +416,7 @@ struct AISettingsView: View {
     @AppStorage(AISettings.codexPath) private var codexPath = ""
     @AppStorage(AISettings.includeSamples) private var includeSamples = false
     @AppStorage(AISettings.allowQueries) private var allowQueries = true
+    @AppStorage(AISettings.approveQueries) private var approveQueries = false
     private let service = AgentService.shared
 
     var body: some View {
@@ -411,6 +438,7 @@ struct AISettingsView: View {
             }
             Section("Privacy") {
                 Toggle("Let the assistant run read-only queries", isOn: $allowQueries)
+                Toggle("Ask before running each query (always on for Codex)", isOn: $approveQueries)
                 Toggle("Share sample documents with the assistant", isOn: $includeSamples)
                 Text("Connection strings, hosts and passwords are never sent. Queries the assistant requests are read-only, limited to 50 documents and 15 seconds.")
                     .font(.caption)

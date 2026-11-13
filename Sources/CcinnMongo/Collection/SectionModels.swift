@@ -302,7 +302,22 @@ final class ExplainModel {
     let namespace: MongoNamespace
     let client: MongoClient
     var query = QueryInput()
-    var plan: ExplainPlan?
+    var plan: ExplainPlan? {
+        didSet { renderRaw() }
+    }
+    /// Highlighted raw explain output, prepared off the main actor.
+    var rawHighlighted: AttributedString?
+
+    private func renderRaw() {
+        rawHighlighted = nil
+        guard let raw = plan?.raw else { return }
+        Task {
+            let text = await Task.detached(priority: .userInitiated) {
+                HighlightedText.make(BSONFormatter(style: .shell, indent: 2).format(raw))
+            }.value
+            if self.plan?.raw == raw { self.rawHighlighted = text }
+        }
+    }
     var isLoading = false
     var error: String?
     var showRaw = false
@@ -501,9 +516,20 @@ final class ConsoleModel {
         let database: String
         let command: String
         let output: String
+        /// Pre-highlighted off the main actor (replies such as serverStatus can be large).
+        let highlighted: AttributedString
         let succeeded: Bool
         let duration: Duration
         let date = Date()
+
+        init(database: String, command: String, output: String, highlighted: AttributedString? = nil, succeeded: Bool, duration: Duration) {
+            self.database = database
+            self.command = command
+            self.output = output
+            self.highlighted = highlighted ?? AttributedString(output)
+            self.succeeded = succeeded
+            self.duration = duration
+        }
     }
 
     let client: MongoClient
@@ -548,8 +574,13 @@ final class ConsoleModel {
             let entry: Entry
             do {
                 let reply = try await client.runCommandRaw(command, database: database)
-                let output = BSONFormatter(style: .shell, indent: 2).format(reply)
-                entry = Entry(database: database, command: text, output: output, succeeded: reply["ok"]?.isTruthy ?? false, duration: clock.now - start)
+                let duration = clock.now - start
+                let (output, highlighted) = await Task.detached(priority: .userInitiated) { () -> (String, AttributedString) in
+                    let output = BSONFormatter(style: .shell, indent: 2).format(reply)
+                    return (output, HighlightedText.make(output))
+                }.value
+                entry = Entry(database: database, command: text, output: output, highlighted: highlighted,
+                              succeeded: reply["ok"]?.isTruthy ?? false, duration: duration)
             } catch {
                 entry = Entry(database: database, command: text, output: describe(error), succeeded: false, duration: clock.now - start)
             }

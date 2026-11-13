@@ -44,6 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Close SSH port forwards synchronously; detached cleanup tasks do not run during exit.
+        SSHTunnel.terminateAll()
+    }
 }
 
 /// Per-window root: connection manager, progress, or workspace.

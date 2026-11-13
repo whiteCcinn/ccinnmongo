@@ -301,15 +301,19 @@ extension MongoClient {
 
     /// Applies update operators to the first (or every) document matching `filter`.
     @discardableResult
-    public func updateDocuments(_ namespace: MongoNamespace, filter: BSONDocument, update: BSONDocument, many: Bool, upsert: Bool = false) async throws -> UpdateResult {
+    public func updateDocuments(_ namespace: MongoNamespace, filter: BSONDocument, update: BSONDocument, many: Bool, upsert: Bool = false,
+                                collation: BSONDocument? = nil) async throws -> UpdateResult {
         guard let first = update.keys.first, first.hasPrefix("$") else {
             throw MongoError(.invalidArgument, "An update document must use update operators such as $set")
         }
-        return try await self.update(namespace, statement: ["q": .document(filter), "u": .document(update), "upsert": .bool(upsert), "multi": .bool(many)])
+        var statement: BSONDocument = ["q": .document(filter), "u": .document(update), "upsert": .bool(upsert), "multi": .bool(many)]
+        if let collation, !collation.isEmpty { statement["collation"] = .document(collation) }
+        return try await self.update(namespace, statement: statement)
     }
 
     private func update(_ namespace: MongoNamespace, statement: BSONDocument) async throws -> UpdateResult {
-        try await withConnection(retryable: false) { connection, _ in
+        try await withConnection(retryable: false) { connection, capabilities in
+            try Self.check(collation: statement["collation"]?.documentValue, capabilities: capabilities)
             let reply = try await connection.runCommand(["update": .string(namespace.collection), "updates": [.document(statement)], "ordered": true],
                                                         database: namespace.database)
             try Self.checkWriteErrors(reply, alreadyApplied: 0, total: 1, verb: "updated")
@@ -321,11 +325,14 @@ extension MongoClient {
 
     /// Deletes the first (or every) document matching `filter`; returns the number deleted.
     @discardableResult
-    public func deleteDocuments(_ namespace: MongoNamespace, filter: BSONDocument, many: Bool) async throws -> Int {
-        try await withConnection(retryable: false) { connection, _ in
+    public func deleteDocuments(_ namespace: MongoNamespace, filter: BSONDocument, many: Bool, collation: BSONDocument? = nil) async throws -> Int {
+        try await withConnection(retryable: false) { connection, capabilities in
+            try Self.check(collation: collation, capabilities: capabilities)
+            var statement: BSONDocument = ["q": .document(filter), "limit": .int32(many ? 0 : 1)]
+            if let collation, !collation.isEmpty { statement["collation"] = .document(collation) }
             let reply = try await connection.runCommand([
                 "delete": .string(namespace.collection),
-                "deletes": [["q": .document(filter), "limit": .int32(many ? 0 : 1)]],
+                "deletes": [.document(statement)],
                 "ordered": true,
             ], database: namespace.database)
             try Self.checkWriteErrors(reply, alreadyApplied: 0, total: 1, verb: "deleted")
@@ -401,7 +408,8 @@ extension MongoClient {
             let direction: String
             switch element.value {
             case let .string(text): direction = text
-            case let .double(number) where number.rounded() == number: direction = String(Int(number))
+            case let .double(number):
+                direction = Int64(exactly: number).map(String.init) ?? number.description
             default: direction = element.value.int64Value.map(String.init) ?? "1"
             }
             return "\(element.key)_\(direction)"

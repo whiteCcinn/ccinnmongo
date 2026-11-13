@@ -265,17 +265,56 @@ final class DocumentsModel {
         refresh()
     }
 
-    /// Deletes every document matching the applied filter.
-    func deleteAllMatching() async throws -> Int {
+    /// Whether the applied query uses a projection (documents on screen may be partial).
+    var hasProjection: Bool {
+        guard let projection = try? ShellSyntax.parseDocument(appliedQuery.projection, allowEmpty: true) else { return false }
+        return !projection.isEmpty
+    }
+
+    /// The complete stored document (the page may have been loaded with a projection).
+    func fullDocument(for item: DocumentItem) async throws -> BSONDocument {
+        guard hasProjection else { return item.document }
+        guard let identity = item.identity else {
+            throw MongoError(.invalidArgument, "This document has no _id, so the full document cannot be loaded")
+        }
+        guard let document = try await client.find(namespace, options: FindOptions(filter: identity, limit: 1)).first else {
+            throw MongoError(.write, "The document no longer exists")
+        }
+        return document
+    }
+
+    /// Bulk operations act on every document matching the filter; skip and limit cannot be honoured.
+    var bulkOperationBlocker: String? {
+        if appliedQuery.skip > 0 || appliedQuery.limit > 0 {
+            return "Skip and limit cannot be applied to bulk operations. Clear them in the query options so the affected documents are exactly the ones matching the filter."
+        }
+        return nil
+    }
+
+    private var appliedCollation: BSONDocument? {
+        guard let collation = try? ShellSyntax.parseDocument(appliedQuery.collation, allowEmpty: true), !collation.isEmpty else { return nil }
+        return collation
+    }
+
+    /// Exact number of documents a bulk operation would affect (filter + collation, no skip/limit).
+    func countForBulkOperation() async throws -> Int64? {
         let filter = try appliedQuery.filterDocument()
-        let deleted = try await client.deleteDocuments(namespace, filter: filter, many: true)
+        return try await client.count(namespace, filter: filter, options: CountOptions(maxTimeMS: 15_000, collation: appliedCollation))
+    }
+
+    /// Deletes every document matching the applied filter (and collation).
+    func deleteAllMatching() async throws -> Int {
+        if let blocker = bulkOperationBlocker { throw MongoError(.invalidArgument, blocker) }
+        let filter = try appliedQuery.filterDocument()
+        let deleted = try await client.deleteDocuments(namespace, filter: filter, many: true, collation: appliedCollation)
         refresh()
         return deleted
     }
 
     func updateAllMatching(_ update: BSONDocument) async throws -> UpdateResult {
+        if let blocker = bulkOperationBlocker { throw MongoError(.invalidArgument, blocker) }
         let filter = try appliedQuery.filterDocument()
-        let result = try await client.updateDocuments(namespace, filter: filter, update: update, many: true)
+        let result = try await client.updateDocuments(namespace, filter: filter, update: update, many: true, collation: appliedCollation)
         refresh()
         return result
     }

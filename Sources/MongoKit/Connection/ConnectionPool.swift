@@ -97,19 +97,20 @@ actor ConnectionPool {
 
     private func createConnection(slotReserved: Bool = false) async throws -> MongoConnection {
         if !slotReserved { openCount += 1 }
+        let connection: MongoConnection
         do {
-            let connection = try await factory()
-            if isClosed {
-                await connection.close()
-                openCount -= 1
-                throw MongoError(.connectionClosed, "The connection pool for \(address) was closed")
-            }
-            return connection
+            connection = try await factory()
         } catch {
             openCount -= 1
             handOffFreedSlot()
             throw error
         }
+        if isClosed {
+            await connection.close()
+            openCount -= 1
+            throw MongoError(.connectionClosed, "The connection pool for \(address) was closed")
+        }
+        return connection
     }
 
     /// Gives a freed slot to the oldest waiter, which will then create its own connection.

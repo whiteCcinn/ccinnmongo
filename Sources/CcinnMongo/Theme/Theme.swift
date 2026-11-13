@@ -115,7 +115,9 @@ extension NSColor {
 enum Format {
     static func bytes(_ value: Double?) -> String {
         guard let value, value.isFinite else { return "—" }
-        return ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .file)
+        // Clamp: Int64(Double) traps for values ≥ 2^63 that a misbehaving server could report.
+        let clamped = Int64(exactly: value.rounded()) ?? (value < 0 ? 0 : Int64.max)
+        return ByteCountFormatter.string(fromByteCount: clamped, countStyle: .file)
     }
 
     static func bytes(_ value: Int64?) -> String {

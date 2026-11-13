@@ -96,7 +96,9 @@ public enum CSVExporter {
 
     static func cell(_ value: BSONValue) -> String {
         switch value {
-        case let .string(text): text
+        case let .string(text):
+            // Neutralise spreadsheet formulas (CSV injection): =, +, -, @, tab and CR prefixes.
+            if let first = text.first, "=+-@\t\r".contains(first) { "'" + text } else { text }
         case let .int32(number): String(number)
         case let .int64(number): String(number)
         case let .double(number): number.isFinite ? number.description : (number.isNaN ? "NaN" : (number < 0 ? "-Infinity" : "Infinity"))

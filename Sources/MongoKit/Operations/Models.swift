@@ -210,7 +210,7 @@ public struct CollectionStats: Sendable {
 
     public init(raw: BSONDocument) { self.raw = raw }
 
-    public var documentCount: Int64? { raw["count"]?.int64Value ?? raw["count"]?.doubleValue.map { Int64($0) } }
+    public var documentCount: Int64? { raw["count"]?.countValue }
     public var size: Double? { raw["size"]?.doubleValue }
     public var averageObjectSize: Double? { raw["avgObjSize"]?.doubleValue }
     public var storageSize: Double? { raw["storageSize"]?.doubleValue }

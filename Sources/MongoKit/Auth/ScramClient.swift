@@ -50,6 +50,10 @@ struct ScramClient: Sendable {
         guard serverNonce.hasPrefix(clientNonce), serverNonce.count > clientNonce.count else {
             throw MongoError(.authentication, "Server nonce does not extend the client nonce; authentication aborted")
         }
+        // An absurd count from a hostile server would pin a CPU for minutes in uncancellable PBKDF2.
+        guard iterations <= 10_000_000 else {
+            throw MongoError(.authentication, "Server requested \(iterations) SCRAM iterations, more than the allowed 10,000,000")
+        }
         guard iterations >= 4096 else {
             throw MongoError(.authentication, "Server requested only \(iterations) SCRAM iterations (minimum 4096)")
         }

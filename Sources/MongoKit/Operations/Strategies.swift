@@ -71,11 +71,9 @@ struct LegacyQueryFindStrategy: FindStrategy {
         if let maxTimeMS = options.maxTimeMS, maxTimeMS > 0 { modifiers["$maxTimeMS"] = .int(maxTimeMS) }
         if explain { modifiers["$explain"] = true }
 
-        var query = options.filter
-        if !modifiers.isEmpty {
-            query = ["$query": .document(options.filter)]
-            for element in modifiers.elements { query.append(element.key, element.value) }
-        }
+        // Always wrap: a bare filter with a top-level `query` field would be read as the wrapped form.
+        var query: BSONDocument = ["$query": .document(options.filter)]
+        for element in modifiers.elements { query.append(element.key, element.value) }
         let numberToReturn: Int32
         if explain {
             numberToReturn = options.limit > 0 ? -Int32(clamping: options.limit) : 0

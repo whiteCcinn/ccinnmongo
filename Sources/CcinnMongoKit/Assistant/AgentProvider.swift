@@ -45,6 +45,11 @@ public enum AgentProvider: String, CaseIterable, Codable, Sendable, Identifiable
         }
     }
 
+    /// Whether the agent provably cannot use tools (shell, files, network) during a request.
+    /// Claude Code runs with `--tools ""`; Codex always keeps a (read-only) shell, so queries it
+    /// requests must be approved by the user before they run.
+    public var isToolFree: Bool { self == .claudeCode }
+
     public struct Invocation: Sendable, Equatable {
         public let executable: URL
         public let arguments: [String]
@@ -63,8 +68,9 @@ public enum AgentProvider: String, CaseIterable, Codable, Sendable, Identifiable
             arguments.append(prompt)
             return Invocation(executable: executable, arguments: arguments)
         case .codex:
-            var arguments = ["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--ephemeral", "--color", "never",
-                             "-C", workingDirectory.path, "-o", outputFile.path]
+            // --ignore-user-config: no user MCP servers/profiles; authentication is kept separately by Codex.
+            var arguments = ["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--ephemeral", "--ignore-user-config",
+                             "--color", "never", "-C", workingDirectory.path, "-o", outputFile.path]
             if let model, !model.isEmpty { arguments += ["-m", model] }
             // Codex has no separate system prompt flag.
             arguments.append(systemPrompt + "\n\n" + prompt)
@@ -177,9 +183,7 @@ public struct CLIAgent: AgentRunning {
         let invocation = provider.invocation(executable: executable, systemPrompt: system, prompt: prompt, model: model,
                                              workingDirectory: workingDirectory, outputFile: outputFile)
 
-        var environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("CLAUDECODE") && !$0.key.hasPrefix("CLAUDE_CODE_") }
-        environment["PATH"] = searchPath
-        environment["NO_COLOR"] = "1"
+        let environment = Self.agentEnvironment(from: ProcessInfo.processInfo.environment, searchPath: searchPath)
         let output = try await ProcessRunner.run(executable: invocation.executable, arguments: invocation.arguments,
                                                  environment: environment, currentDirectory: workingDirectory, timeout: timeout)
         let stdout = String(decoding: output.stdout, as: UTF8.self)
@@ -193,5 +197,17 @@ public struct CLIAgent: AgentRunning {
             throw AgentError.failed("\(provider.displayName) exited with status \(output.status): \(detail)")
         }
         return try provider.extractReply(stdout: stdout, outputFile: fileText)
+    }
+
+    /// Environment for agent processes: the user's environment (provider credentials, proxies,
+    /// Bedrock/Vertex settings) minus CcinnMongo's own variables and nested-session markers.
+    static func agentEnvironment(from base: [String: String], searchPath: String) -> [String: String] {
+        let nestingMarkers: Set<String> = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT"]
+        var environment = base.filter { key, _ in
+            !key.hasPrefix("CCINNMONGO_") && !nestingMarkers.contains(key)
+        }
+        environment["PATH"] = searchPath
+        environment["NO_COLOR"] = "1"
+        return environment
     }
 }

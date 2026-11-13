@@ -77,6 +77,7 @@ final class ConnectionDraft {
     private func syncURIFromForm() {
         var display = form.uri
         if display.password != nil { display.password = Self.maskedPassword }
+        if display.tlsCertificateKeyFilePassword != nil { display.setOption("tlsCertificateKeyFilePassword", Self.maskedPassword) }
         isWritingURI = true
         uriText = display.description
         isWritingURI = false
@@ -88,6 +89,9 @@ final class ConnectionDraft {
             var parsed = try ConnectionString(uriText)
             // Keep the stored password when the masked placeholder is left untouched.
             if parsed.password == Self.maskedPassword { parsed.password = form.password.isEmpty ? nil : form.password }
+            if parsed.tlsCertificateKeyFilePassword == Self.maskedPassword {
+                parsed.setOption("tlsCertificateKeyFilePassword", form.tlsCertificateKeyFilePassword.isEmpty ? nil : form.tlsCertificateKeyFilePassword)
+            }
             isUpdatingFromURI = true
             form = ConnectionForm(parsed)
             isUpdatingFromURI = false

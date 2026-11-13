@@ -199,12 +199,17 @@ public enum QuerySafetyPolicy {
     static let forbiddenStages: Set<String> = ["$out", "$merge"]
     static let forbiddenOperators: Set<String> = ["$where", "$function", "$accumulator"]
 
-    /// Validates and returns a bounded copy of `query`, or throws if it could write data or run JavaScript.
-    public static func validate(_ query: AssistantQuery) throws -> AssistantQuery {
+    /// Throws if `query` could write data or run server-side JavaScript (used for suggestions the user applies).
+    public static func check(_ query: AssistantQuery) throws {
         try scan(.document(query.filter), depth: 0)
         if let projection = query.projection { try scan(.document(projection), depth: 0) }
+        if let sort = query.sort { try scan(.document(sort), depth: 0) }
         for stage in query.pipeline { try scan(.document(stage), depth: 0) }
+    }
 
+    /// Validates and returns a bounded copy of `query`, or throws if it could write data or run JavaScript.
+    public static func validate(_ query: AssistantQuery) throws -> AssistantQuery {
+        try check(query)
         var bounded = query
         switch query.kind {
         case .find:

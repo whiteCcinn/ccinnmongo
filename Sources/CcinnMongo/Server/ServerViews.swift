@@ -345,7 +345,7 @@ struct ConsoleView: View {
                                         .buttonStyle(.borderless)
                                         .help("Copy output")
                                 }
-                                Text(HighlightedText.make(entry.output))
+                                Text(entry.highlighted)
                                     .font(Theme.monospacedSmall)
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)

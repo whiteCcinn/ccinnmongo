@@ -49,6 +49,7 @@ public enum AssistantEvent: Sendable {
     case running(AssistantQuery)
     case ran(AssistantQuery, AssistantQueryResult)
     case rejected(AssistantQuery, String)
+    case declined(AssistantQuery)
     case failed(AssistantQuery, String)
 
     public var label: String {
@@ -57,6 +58,7 @@ public enum AssistantEvent: Sendable {
         case .running: "running"
         case .ran: "ran"
         case .rejected: "rejected"
+        case .declined: "declined"
         case .failed: "failed"
         }
     }
@@ -85,7 +87,10 @@ public struct AssistantEngine: Sendable {
         self.maxSteps = maxSteps
     }
 
+    /// - Parameter approve: asked before each agent-requested query runs (after the safety check);
+    ///   returning `false` skips it. Required for agents that are not tool-free.
     public func run(mode: AssistantMode, context: AssistantContext, history: [AssistantTurn], request: String,
+                    approve: (@Sendable (AssistantQuery) async -> Bool)? = nil,
                     onEvent: @Sendable (AssistantEvent) -> Void) async throws -> AssistantOutcome {
         var transcript = history + [.user(request)]
         let system = AssistantPromptBuilder.systemPrompt(for: mode)
@@ -134,6 +139,12 @@ public struct AssistantEngine: Sendable {
                 } catch let error as AssistantProtocolError {
                     onEvent(.rejected(query, error.message))
                     transcript.append(.queryRejected("CcinnMongo rejected that query: \(error.message) Only read-only find, count and aggregate operations are allowed."))
+                    continue
+                }
+                if let approve, !(await approve(bounded)) {
+                    try Task.checkCancellation()
+                    onEvent(.declined(bounded))
+                    transcript.append(.queryRejected("The user declined to run that query. Answer without it or propose a different query."))
                     continue
                 }
                 onEvent(.running(bounded))

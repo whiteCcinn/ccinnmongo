@@ -14,6 +14,14 @@ public struct BSONFormatter: Sendable {
     public var style: Style
     /// Spaces per indentation level; `nil` produces a single line.
     public var indent: Int?
+    /// When set, formatting stops (with "…") once the output exceeds this many UTF-8 bytes, so
+    /// previews of huge values cost O(limit) instead of O(value size).
+    var byteLimit: Int?
+
+    private func exceedsBudget(_ output: String) -> Bool {
+        guard let byteLimit else { return false }
+        return output.utf8.count > byteLimit
+    }
 
     public init(style: Style = .shell, indent: Int? = nil) {
         self.style = style
@@ -62,6 +70,10 @@ public struct BSONFormatter: Sendable {
         let compactShell = indent == nil && isShell
         if compactShell { output += " " }
         for (index, element) in document.elements.enumerated() {
+            if exceedsBudget(output) {
+                output += " …"
+                break
+            }
             if index > 0 { output += indent == nil ? ", " : "," }
             newline(level + 1, into: &output)
             writeKey(element.key, into: &output)
@@ -84,6 +96,10 @@ public struct BSONFormatter: Sendable {
         }
         output += "["
         for (index, value) in array.enumerated() {
+            if exceedsBudget(output) {
+                output += " …"
+                break
+            }
             if index > 0 { output += indent == nil ? ", " : "," }
             newline(level + 1, into: &output)
             writeValue(value, level: level + 1, into: &output)
@@ -129,7 +145,11 @@ public struct BSONFormatter: Sendable {
     private func writeScalar(_ value: BSONValue, into output: inout String) {
         switch value {
         case let .string(text):
-            Self.writeQuoted(text, into: &output)
+            if let byteLimit, text.utf8.count > byteLimit {
+                Self.writeQuoted(String(text.prefix(byteLimit)), into: &output)
+            } else {
+                Self.writeQuoted(text, into: &output)
+            }
         case let .bool(flag):
             output += flag ? "true" : "false"
         case .null:
@@ -241,7 +261,7 @@ public struct BSONFormatter: Sendable {
     }
 
     private func writeBinary(_ binary: BSONBinary, into output: inout String) {
-        let base64 = binary.data.base64EncodedString()
+        let base64 = (byteLimit.map { binary.data.prefix($0) } ?? binary.data).base64EncodedString()
         if isShell {
             if binary.subtype == .uuid, let uuid = binary.uuid {
                 output += "UUID(\"\(uuid.uuidString.lowercased())\")"
@@ -326,7 +346,9 @@ public struct BSONFormatter: Sendable {
 
     /// Single-line shell-style preview truncated to `maxLength` characters (plus an ellipsis).
     public static func summary(of value: BSONValue, maxLength: Int) -> String {
-        let text = BSONFormatter(style: .shell).format(value)
+        var formatter = BSONFormatter(style: .shell)
+        formatter.byteLimit = max(64, maxLength * 4)
+        let text = formatter.format(value)
         guard text.count > maxLength else { return text }
         return String(text.prefix(max(0, maxLength))) + "…"
     }

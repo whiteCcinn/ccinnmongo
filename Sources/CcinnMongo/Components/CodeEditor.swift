@@ -158,7 +158,8 @@ struct CodeEditor: NSViewRepresentable {
             lastError = parent.error
             storage.beginEditing()
             storage.setAttributes(Self.baseAttributes(fontSize: parent.fontSize), range: NSRange(location: 0, length: length))
-            if length < 400_000 {
+            // Re-highlighting runs on every keystroke on the main thread; skip it for very large texts.
+            if length < 150_000 {
                 for span in SyntaxHighlighter.spans(for: text) {
                     let range = NSRange(location: span.range.lowerBound, length: span.range.count)
                     guard NSMaxRange(range) <= length else { continue }

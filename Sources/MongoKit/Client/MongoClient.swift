@@ -137,26 +137,42 @@ actor ClientState {
     func setServerInfo(_ info: ServerInfo) { serverInfo = info }
 
     func server(progress: (@Sendable (ConnectionStage) -> Void)?) async throws -> SelectedServer {
-        guard !isClosed else { throw MongoError(.connectionClosed, "The client has been closed") }
-        if let current { return current }
-        if let selection { return try await selection.value }
+        var attempts = 0
+        while true {
+            attempts += 1
+            guard !isClosed else { throw MongoError(.connectionClosed, "The client has been closed") }
+            if let current { return current }
 
-        let connectionString = self.connectionString
-        let options = self.options
-        let task = Task { try await Self.select(connectionString: connectionString, options: options, progress: progress) }
-        selection = task
-        do {
-            let selected = try await task.value
-            selection = nil
-            if isClosed {
-                await selected.pool.close()
-                throw MongoError(.connectionClosed, "The client has been closed")
+            let task: Task<SelectedServer, any Error>
+            if let selection {
+                task = selection
+            } else {
+                let connectionString = self.connectionString
+                let options = self.options
+                task = Task { try await Self.select(connectionString: connectionString, options: options, progress: progress) }
+                selection = task
             }
-            current = selected
-            return selected
-        } catch {
-            selection = nil
-            throw error
+            do {
+                // Cancelling the caller cancels the shared selection (and its sockets) promptly.
+                let selected = try await withTaskCancellationHandler {
+                    try await task.value
+                } onCancel: {
+                    task.cancel()
+                }
+                if selection == task { selection = nil }
+                if isClosed {
+                    await selected.pool.close()
+                    throw MongoError(.connectionClosed, "The client has been closed")
+                }
+                if current == nil { current = selected }
+                return current ?? selected
+            } catch {
+                if selection == task { selection = nil }
+                if Task.isCancelled { throw MongoError.cancelled() }
+                // Another caller cancelled the shared selection: retry once on our own behalf.
+                let wasCancelled = error is CancellationError || (error as? MongoError)?.kind == .cancelled
+                guard wasCancelled, attempts < 2 else { throw error }
+            }
         }
     }
 
@@ -214,7 +230,12 @@ actor ClientState {
                                       replicaSet: uri.replicaSet,
                                       readPreference: uri.readPreference,
                                       probe: { address in try await factory.probe(address) })
-        let chosen = try await selector.select()
+        let selectionTimeout = Double(uri.serverSelectionTimeoutMS.flatMap { $0 > 0 ? $0 : nil } ?? 30_000) / 1000
+        let chosen = try await Deadline.run(seconds: selectionTimeout, timeoutError: {
+            MongoError(.serverSelection, "No suitable server answered within \(Int(selectionTimeout)) seconds")
+        }) {
+            try await selector.select()
+        }
         let address = chosen.address
         let pool = ConnectionPool(address: address,
                                   maxSize: options.maxPoolSize ?? uri.maxPoolSize.flatMap { $0 > 0 ? $0 : nil } ?? 6,

@@ -294,9 +294,17 @@ public struct ConnectionString: Sendable, Equatable, CustomStringConvertible {
         output += "/"
         if let database { output += Self.encode(database) }
         if !options.isEmpty {
-            output += "?" + options.map { "\($0.name)=\(Self.encodeOptionValue($0.value))" }.joined(separator: "&")
+            output += "?" + options.map { option in
+                let value = redactPassword && Self.isSecretOption(option.name) ? "****" : Self.encodeOptionValue(option.value)
+                return "\(option.name)=\(value)"
+            }.joined(separator: "&")
         }
         return output
+    }
+
+    /// Options whose values are secrets (e.g. `tlsCertificateKeyFilePassword`).
+    public static func isSecretOption(_ name: String) -> Bool {
+        name.lowercased().contains("password")
     }
 
     // MARK: Helpers

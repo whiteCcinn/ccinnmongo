@@ -221,7 +221,7 @@ struct ExplainView: View {
                             Toggle("Raw output", isOn: $model.showRaw).toggleStyle(.switch).controlSize(.small)
                         }
                         if model.showRaw {
-                            Text(HighlightedText.make(BSONFormatter(style: .shell, indent: 2).format(plan.raw)))
+                            Text(model.rawHighlighted ?? AttributedString("Formatting…"))
                                 .font(Theme.monospacedSmall)
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)

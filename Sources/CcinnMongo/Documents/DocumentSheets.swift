@@ -20,6 +20,10 @@ struct DocumentEditorSheet: View {
     @State private var text = ""
     @State private var error: String?
     @State private var isSaving = false
+    @State private var isLoading = true
+    /// Validated off the main actor (debounced) so very large documents stay responsive.
+    @State private var syntaxError: SyntaxError?
+    @State private var isValidating = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -33,11 +37,17 @@ struct DocumentEditorSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            CodeEditor(text: $text, completions: completions, error: syntaxError, focusOnAppear: true, onSubmit: save)
-                .padding(4)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(syntaxError == nil ? Color.secondary.opacity(0.25) : .red.opacity(0.7)))
-                .frame(minHeight: 380)
+            ZStack {
+                CodeEditor(text: $text, completions: completions, error: syntaxError, focusOnAppear: true, onSubmit: save)
+                    .padding(4)
+                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(syntaxError == nil ? Color.secondary.opacity(0.25) : .red.opacity(0.7)))
+                    .opacity(isLoading ? 0.3 : 1)
+                if isLoading {
+                    ProgressView("Loading the full document…")
+                }
+            }
+            .frame(minHeight: 380)
             if let syntaxError {
                 Label(syntaxError.description, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.red)
             } else if case .insert = mode {
@@ -48,18 +58,24 @@ struct DocumentEditorSheet: View {
             if let error { ErrorBanner(message: error) }
             HStack {
                 Button("Format") { format() }
-                    .disabled(syntaxError != nil)
+                    .disabled(syntaxError != nil || isLoading)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(actionTitle, action: save)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut("s", modifiers: .command)
-                    .disabled(syntaxError != nil || isSaving)
+                    .disabled(syntaxError != nil || isSaving || isLoading || isValidating)
             }
         }
         .padding(20)
         .frame(minWidth: 680, idealWidth: 760, minHeight: 540)
-        .onAppear(perform: prepare)
+        .task { await prepare() }
+        .task(id: text) { await validate() }
+    }
+
+    private var isInsert: Bool {
+        if case .insert = mode { return true }
+        return false
     }
 
     private var title: String {
@@ -77,38 +93,47 @@ struct DocumentEditorSheet: View {
         }
     }
 
-    private var syntaxError: SyntaxError? {
-        do {
-            if case .insert = mode {
-                _ = try ShellSyntax.parseDocumentSequence(text)
-            } else {
-                _ = try ShellSyntax.parseDocument(text)
+    private func validate() async {
+        isValidating = true
+        try? await Task.sleep(for: .milliseconds(text.utf16.count > 20_000 ? 250 : 60))
+        guard !Task.isCancelled else { return }
+        let source = text
+        let sequence = isInsert
+        let result = await Task.detached(priority: .userInitiated) { () -> SyntaxError? in
+            do {
+                if sequence { _ = try ShellSyntax.parseDocumentSequence(source) } else { _ = try ShellSyntax.parseDocument(source) }
+                return nil
+            } catch let error as SyntaxError {
+                return error
+            } catch {
+                return nil
             }
-            return nil
-        } catch let error as SyntaxError {
-            return error
-        } catch {
-            return nil
-        }
+        }.value
+        guard !Task.isCancelled else { return }
+        syntaxError = result
+        isValidating = false
     }
 
-    private func prepare() {
-        let formatter = BSONFormatter(style: .shell, indent: 2)
+    /// Edits and clones start from the complete stored document, never from a projected one.
+    private func prepare() async {
         switch mode {
         case .insert:
             text = "{\n  \n}"
-        case let .edit(item):
-            text = formatter.format(item.document)
-        case let .clone(item):
-            var copy = item.document
-            copy.removeValue(forKey: "_id")
-            text = formatter.format(copy)
+        case let .edit(item), let .clone(item):
+            do {
+                var document = try await model.fullDocument(for: item)
+                if case .clone = mode { document.removeValue(forKey: "_id") }
+                text = await Task.detached { BSONFormatter(style: .shell, indent: 2).format(document) }.value
+            } catch {
+                self.error = describe(error)
+            }
         }
+        isLoading = false
     }
 
     private func format() {
         let formatter = BSONFormatter(style: .shell, indent: 2)
-        if case .insert = mode, let documents = try? ShellSyntax.parseDocumentSequence(text) {
+        if isInsert, let documents = try? ShellSyntax.parseDocumentSequence(text) {
             text = documents.count == 1 ? formatter.format(documents[0]) : formatter.format(array: documents.map(BSONValue.document))
         } else if let document = try? ShellSyntax.parseDocument(text) {
             text = formatter.format(document)
@@ -116,21 +141,22 @@ struct DocumentEditorSheet: View {
     }
 
     private func save() {
-        guard syntaxError == nil, !isSaving else { return }
+        guard syntaxError == nil, !isSaving, !isLoading else { return }
         isSaving = true
         error = nil
+        let source = text
         Task {
             do {
                 switch mode {
                 case .insert:
-                    let documents = try ShellSyntax.parseDocumentSequence(text)
+                    let documents = try ShellSyntax.parseDocumentSequence(source)
                     let count = try await model.insert(documents)
                     model.workspace.show(count == 1 ? "Inserted 1 document" : "Inserted \(count) documents")
                 case let .edit(item):
-                    try await model.replace(item, with: try ShellSyntax.parseDocument(text))
+                    try await model.replace(item, with: try ShellSyntax.parseDocument(source))
                     model.workspace.show("Document updated")
                 case .clone:
-                    _ = try await model.insert([try ShellSyntax.parseDocument(text)])
+                    _ = try await model.insert([try ShellSyntax.parseDocument(source)])
                     model.workspace.show("Document cloned")
                 }
                 dismiss()
@@ -144,17 +170,54 @@ struct DocumentEditorSheet: View {
 
 // MARK: - Bulk operations
 
+/// Shows exactly how many documents a bulk operation affects, or why it is blocked.
+private struct BulkImpactView: View {
+    let model: DocumentsModel
+    let verb: String
+    @Binding var count: Int64?
+    @State private var isCounting = true
+    @State private var countError: String?
+
+    var body: some View {
+        Group {
+            if let blocker = model.bulkOperationBlocker {
+                Label(blocker, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            } else if isCounting {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Counting matching documents…").foregroundStyle(.secondary)
+                }
+            } else if let count {
+                Text("**\(Format.count(count))** documents match the filter and will be \(verb).")
+            } else {
+                Text(countError ?? "The number of matching documents could not be determined.").foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            guard model.bulkOperationBlocker == nil else { return }
+            do {
+                count = try await model.countForBulkOperation()
+            } catch {
+                countError = describe(error)
+            }
+            isCounting = false
+        }
+    }
+}
+
 struct BulkUpdateSheet: View {
     let model: DocumentsModel
     @Environment(\.dismiss) private var dismiss
     @State private var update = "{\n  $set: {\n    \n  }\n}"
     @State private var error: String?
     @State private var isRunning = false
+    @State private var count: Int64?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Update Matching Documents").font(.title2.weight(.semibold))
             filterSummary(model)
+            BulkImpactView(model: model, verb: "updated", count: $count)
             Text("Update").font(.headline)
             CodeEditor(text: $update, completions: CompletionCatalog.updateOperators, error: parseError, focusOnAppear: true)
                 .padding(4)
@@ -167,11 +230,11 @@ struct BulkUpdateSheet: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Update Documents") { run() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(parseError != nil || isRunning)
+                    .disabled(parseError != nil || isRunning || model.bulkOperationBlocker != nil)
             }
         }
         .padding(20)
-        .frame(width: 620, height: 460)
+        .frame(width: 620, height: 500)
     }
 
     private var parseError: SyntaxError? {
@@ -206,6 +269,7 @@ struct BulkDeleteSheet: View {
     @State private var error: String?
     @State private var isRunning = false
     @State private var confirmation = ""
+    @State private var count: Int64?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -213,9 +277,7 @@ struct BulkDeleteSheet: View {
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.red)
             filterSummary(model)
-            if case let .known(count) = model.count {
-                Text("\(Format.count(count)) documents will be permanently deleted.")
-            }
+            BulkImpactView(model: model, verb: "permanently deleted", count: $count)
             Text("Type **delete** to confirm.").foregroundStyle(.secondary)
             TextField("delete", text: $confirmation).textFieldStyle(.roundedBorder)
             if let error { ErrorBanner(message: error) }
@@ -225,7 +287,7 @@ struct BulkDeleteSheet: View {
                 Button("Delete Documents", role: .destructive) { run() }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
-                    .disabled(confirmation != "delete" || isRunning)
+                    .disabled(confirmation != "delete" || isRunning || model.bulkOperationBlocker != nil)
             }
         }
         .padding(20)

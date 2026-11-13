@@ -40,6 +40,8 @@ final class FakeMongoServer: @unchecked Sendable {
         var saslSupportedMechs: [String]?
         /// Split every reply into chunks of this size to exercise framing.
         var chunkSize: Int?
+        /// Accept connections but never answer anything (not even the handshake).
+        var silent = false
     }
 
     let configuration: Configuration
@@ -103,6 +105,7 @@ final class FakeMongoServer: @unchecked Sendable {
     fileprivate func handle(_ bytes: [UInt8]) -> (reply: [UInt8]?, disconnect: Bool) {
         guard let (requestID, request) = try? Self.decode(bytes) else { return (nil, true) }
         state.withLock { $0.requests.append(request) }
+        if configuration.silent { return (nil, false) }
 
         if case let .command(_, body, viaOpMsg, _) = request, let name = body.elements.first?.key,
            name == "isMaster" || name == "ismaster" || name == "hello" {

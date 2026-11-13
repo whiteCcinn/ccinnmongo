@@ -56,6 +56,7 @@ public struct SecretKey: Hashable, Sendable {
     public enum Kind: String, Sendable {
         case password
         case sshSecret
+        case tlsCertificatePassword
     }
 
     public let profileID: UUID
@@ -178,8 +179,15 @@ public final class ProfileRepository: Sendable {
         var parsed = try ConnectionString(uri)
         let password = parsed.password
         parsed.password = nil
+        let certificatePassword = parsed.tlsCertificateKeyFilePassword
+        parsed.setOption("tlsCertificateKeyFilePassword", nil)
+        // Any other secret-looking option must never reach the profile file either.
+        for option in parsed.options where ConnectionString.isSecretOption(option.name) {
+            parsed.setOption(option.name, nil)
+        }
         profile.uri = parsed.description
         try secrets.setSecret(password, for: SecretKey(profileID: profile.id, kind: .password))
+        try secrets.setSecret(certificatePassword, for: SecretKey(profileID: profile.id, kind: .tlsCertificatePassword))
         try secrets.setSecret(sshSecret?.isEmpty == true ? nil : sshSecret, for: SecretKey(profileID: profile.id, kind: .sshSecret))
     }
 
@@ -197,11 +205,15 @@ public final class ProfileRepository: Sendable {
         if parsed.username != nil, let password = password(for: profile) {
             parsed.password = password
         }
+        if let certificatePassword = try? secrets.secret(for: SecretKey(profileID: profile.id, kind: .tlsCertificatePassword)) {
+            parsed.setOption("tlsCertificateKeyFilePassword", certificatePassword)
+        }
         return parsed
     }
 
     public func delete(_ profile: ConnectionProfile) throws {
         try secrets.setSecret(nil, for: SecretKey(profileID: profile.id, kind: .password))
         try secrets.setSecret(nil, for: SecretKey(profileID: profile.id, kind: .sshSecret))
+        try secrets.setSecret(nil, for: SecretKey(profileID: profile.id, kind: .tlsCertificatePassword))
     }
 }
