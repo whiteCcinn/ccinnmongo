@@ -34,7 +34,7 @@ let package = Package(
         .testTarget(name: "BSONTests", dependencies: ["BSON"], swiftSettings: strictSettings),
         .testTarget(name: "MongoWireTests", dependencies: ["BSON", "MongoWire"], swiftSettings: strictSettings),
         .testTarget(name: "MongoKitTests", dependencies: ["BSON", "MongoWire", "MongoKit"], swiftSettings: strictSettings),
-        .testTarget(name: "GroveKitTests", dependencies: ["BSON", "MongoKit", "GroveKit"], swiftSettings: strictSettings),
+        .testTarget(name: "GroveKitTests", dependencies: ["BSON", "MongoKit", "GroveKit"], exclude: ["Fixtures"], swiftSettings: strictSettings),
         .testTarget(name: "IntegrationTests", dependencies: ["BSON", "MongoKit", "GroveKit"], swiftSettings: strictSettings),
     ],
     swiftLanguageModes: [.v6]
