@@ -34,14 +34,14 @@ struct ConnectionStringTests {
     }
 
     @Test func defaultsAndAliases() throws {
-        let uri = try ConnectionString("mongodb://localhost/?SSL=true&tlsAllowInvalidCertificates=true&readPreference=secondaryPreferred&directConnection=true&appName=Grove&maxPoolSize=7&connectTimeoutMS=2500")
+        let uri = try ConnectionString("mongodb://localhost/?SSL=true&tlsAllowInvalidCertificates=true&readPreference=secondaryPreferred&directConnection=true&appName=CcinnMongo&maxPoolSize=7&connectTimeoutMS=2500")
         #expect(uri.hosts == [ServerAddress(host: "localhost", port: 27017)])
         #expect(uri.database == nil)
         #expect(uri.tls == true)
         #expect(uri.tlsAllowInvalidCertificates == true)
         #expect(uri.readPreference == .secondaryPreferred)
         #expect(uri.directConnection == true)
-        #expect(uri.appName == "Grove")
+        #expect(uri.appName == "CcinnMongo")
         #expect(uri.maxPoolSize == 7)
         #expect(uri.connectTimeoutMS == 2500)
     }

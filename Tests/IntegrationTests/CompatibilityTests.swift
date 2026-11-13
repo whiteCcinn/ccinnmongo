@@ -3,14 +3,14 @@ import Foundation
 import MongoKit
 import Testing
 
-/// A real server to test against, from `GROVE_IT_URIS="2.6=mongodb://...,8.0=mongodb://..."` (see scripts/it-up.sh).
+/// A real server to test against, from `CCINNMONGO_IT_URIS="2.6=mongodb://...,8.0=mongodb://..."` (see scripts/it-up.sh).
 struct ServerTarget: Sendable, CustomTestStringConvertible {
     let version: String
     let uri: String
     var testDescription: String { "MongoDB \(version)" }
 
     static let all: [ServerTarget] = {
-        guard let raw = ProcessInfo.processInfo.environment["GROVE_IT_URIS"], !raw.isEmpty else { return [] }
+        guard let raw = ProcessInfo.processInfo.environment["CCINNMONGO_IT_URIS"], !raw.isEmpty else { return [] }
         return raw.split(separator: ",").compactMap { entry in
             let parts = entry.split(separator: "=", maxSplits: 1)
             guard parts.count == 2 else { return nil }
@@ -26,14 +26,14 @@ struct ServerTarget: Sendable, CustomTestStringConvertible {
     func atLeast(_ major: Int, _ minor: Int) -> Bool { majorMinor >= (major, minor) }
 }
 
-@Suite("Real server compatibility", .enabled(if: !ServerTarget.all.isEmpty, "set GROVE_IT_URIS (scripts/it-up.sh)"))
+@Suite("Real server compatibility", .enabled(if: !ServerTarget.all.isEmpty, "set CCINNMONGO_IT_URIS (scripts/it-up.sh)"))
 struct CompatibilityTests {
     static func everyTypeDocument() -> BSONDocument {
         let oid = ObjectId(hex: "507f1f77bcf86cd799439011")!
         var doc = BSONDocument()
         doc.append("_id", .objectId(ObjectId()))
         doc.append("double", .double(-12.5))
-        doc.append("string", .string("grove 🌳 ünïcødé"))
+        doc.append("string", .string("mongo 🌳 ünïcødé"))
         doc.append("document", .document(["nested": .int32(1), "deeper": .document(["x": .null])]))
         doc.append("array", .array([.int32(1), .string("two"), .document(["three": .int64(3)])]))
         doc.append("binary", .binary(BSONBinary(subtype: .generic, data: Data([0, 1, 2, 255]))))
@@ -54,7 +54,7 @@ struct CompatibilityTests {
 
     private func withDatabase(_ target: ServerTarget, _ body: (MongoClient, String) async throws -> Void) async throws {
         let client = try MongoClient(target.uri)
-        let database = "grove_it_\(UUID().uuidString.prefix(8).lowercased())"
+        let database = "ccinnmongo_it_\(UUID().uuidString.prefix(8).lowercased())"
         do {
             try await body(client, database)
         } catch {

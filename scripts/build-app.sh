@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Builds Grove.app (release, ad-hoc signed) into ./dist.
+# Builds CcinnMongo.app (release, ad-hoc signed) into ./dist.
 #
-#   scripts/build-app.sh            # build dist/Grove.app
+#   scripts/build-app.sh            # build dist/CcinnMongo.app
 #   scripts/build-app.sh --open     # build and launch
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="Grove"
-BUNDLE_ID="app.grove.Grove"
-VERSION="${GROVE_VERSION:-1.0.0}"
+APP_NAME="CcinnMongo"
+BUNDLE_ID="io.github.whiteccinn.ccinnmongo"
+VERSION="${CCINNMONGO_VERSION:-1.0.0}"
 DIST="$ROOT/dist"
 APP="$DIST/$APP_NAME.app"
 ICON="$ROOT/Resources/AppIcon.icns"
@@ -46,7 +46,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticTermination</key><false/>
-  <key>NSHumanReadableCopyright</key><string>Grove — a native MongoDB client</string>
+  <key>NSHumanReadableCopyright</key><string>CcinnMongo — a native MongoDB client</string>
 </dict>
 </plist>
 PLIST

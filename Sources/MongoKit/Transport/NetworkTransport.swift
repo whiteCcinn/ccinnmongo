@@ -34,7 +34,7 @@ final class NetworkTransport: MongoTransport, @unchecked Sendable {
             }
             endpoint = .hostPort(host: NWEndpoint.Host(address.host), port: port)
         }
-        let queue = DispatchQueue(label: "grove.transport.\(address)", qos: .userInitiated)
+        let queue = DispatchQueue(label: "ccinnmongo.transport.\(address)", qos: .userInitiated)
         let connection = NWConnection(to: endpoint, using: parameters)
         let transport = NetworkTransport(connection: connection, queue: queue, address: address, socketTimeout: options.socketTimeout)
         try await transport.start(timeout: options.connectTimeout, usesTLS: options.tls != nil)

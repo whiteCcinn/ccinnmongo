@@ -206,7 +206,7 @@ actor ClientState {
         let factory = ConnectionFactory(transportFactory: options.transportFactory,
                                         transportOptions: transportOptions,
                                         credential: credential,
-                                        appName: uri.appName ?? "Grove",
+                                        appName: uri.appName ?? "CcinnMongo",
                                         readPreference: uri.readPreference)
 
         let selector = ServerSelector(seeds: uri.hosts,

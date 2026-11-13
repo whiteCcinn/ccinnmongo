@@ -1,4 +1,4 @@
-// Renders the Grove app icon (all macOS iconset sizes) with AppKit.
+// Renders the CcinnMongo app icon (all macOS iconset sizes) with AppKit.
 // Usage: swift scripts/make-icon.swift <output.iconset>
 import AppKit
 

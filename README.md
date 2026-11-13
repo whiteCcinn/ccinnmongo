@@ -1,7 +1,7 @@
-# Grove
+# CcinnMongo
 
 A native macOS client for MongoDB that works the same against **MongoDB 2.6 → 8.x**.
 
-Grove has its own pure-Swift MongoDB stack (BSON, wire protocol, authentication), so it is not tied to the minimum server version of an official driver. It uses `OP_QUERY` for legacy servers and `OP_MSG` for MongoDB 3.6+.
+CcinnMongo has its own pure-Swift MongoDB stack (BSON, wire protocol, authentication), so it is not tied to the minimum server version of an official driver. It uses `OP_QUERY` for legacy servers and `OP_MSG` for MongoDB 3.6+.
 
 Development follows OpenSpec. See `openspec/changes/add-mongo-desktop-client/` for the proposal, specs, design and tasks.

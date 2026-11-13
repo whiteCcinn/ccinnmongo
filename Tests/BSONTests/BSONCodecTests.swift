@@ -39,7 +39,7 @@ struct BSONCodecTests {
         let oid = ObjectId(hex: "507f1f77bcf86cd799439011")!
         var doc = BSONDocument()
         doc.append("double", .double(-12.5))
-        doc.append("string", .string("grove 🌳 ünïcødé"))
+        doc.append("string", .string("mongo 🌳 ünïcødé"))
         doc.append("document", .document(["nested": .int32(1), "deeper": .document(["x": .null])]))
         doc.append("array", .array([.int32(1), .string("two"), .document(["three": .int64(3)])]))
         doc.append("binary", .binary(BSONBinary(subtype: .generic, data: Data([0, 1, 2, 255]))))

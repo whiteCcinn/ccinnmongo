@@ -1,5 +1,5 @@
 // Demo dataset used for screenshots and manual testing (works in the legacy mongo shell and mongosh).
-//   docker exec <container> mongo -u grove -p grove-secret --authenticationDatabase admin /tmp/seed-demo.js
+//   docker exec <container> mongo -u ccinn -p ccinn-secret --authenticationDatabase admin /tmp/seed-demo.js
 var shop = db.getSiblingDB('shop');
 // MongoDB 2.6/3.2 shells have no NumberDecimal: fall back to doubles there.
 var dec = function (text) { return typeof NumberDecimal === 'function' ? NumberDecimal(text) : parseFloat(text); };

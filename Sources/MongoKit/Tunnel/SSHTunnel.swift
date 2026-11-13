@@ -73,7 +73,7 @@ public final class SSHTunnel: Sendable {
         environment["SSH_ASKPASS"] = askPass
         environment["SSH_ASKPASS_REQUIRE"] = "force"
         environment["DISPLAY"] = environment["DISPLAY"] ?? ":0"
-        environment["GROVE_ASKPASS_SECRET"] = secret ?? ""
+        environment["CCINNMONGO_ASKPASS_SECRET"] = secret ?? ""
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
@@ -200,10 +200,10 @@ final class AskPassHelper: Sendable {
 
     func path() throws -> String {
         if let existing = cached.withLock({ $0 }), FileManager.default.isExecutableFile(atPath: existing) { return existing }
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("grove-askpass-\(getpid())", isDirectory: true)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ccinnmongo-askpass-\(getpid())", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let script = directory.appendingPathComponent("askpass.sh")
-        let contents = "#!/bin/sh\nprintf '%s\\n' \"$GROVE_ASKPASS_SECRET\"\n"
+        let contents = "#!/bin/sh\nprintf '%s\\n' \"$CCINNMONGO_ASKPASS_SECRET\"\n"
         try Data(contents.utf8).write(to: script, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
         cached.withLock { $0 = script.path }

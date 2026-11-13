@@ -4,11 +4,11 @@
 #   scripts/it-up.sh            # start all versions
 #   scripts/it-up.sh 2.6 8.0    # start selected versions
 #
-# Prints the GROVE_IT_URIS value to export before running `swift test --filter IntegrationTests`.
+# Prints the CCINNMONGO_IT_URIS value to export before running `swift test --filter IntegrationTests`.
 set -euo pipefail
 
-USER_NAME="grove"
-USER_PASSWORD="grove-secret"
+USER_NAME="ccinn"
+USER_PASSWORD="ccinn-secret"
 ALL_VERSIONS=(2.6 3.0 3.2 3.4 3.6 4.0 8.0)
 VERSIONS=("${@:-${ALL_VERSIONS[@]}}")
 
@@ -27,7 +27,7 @@ platform_for() {
 
 uris=()
 for version in "${VERSIONS[@]}"; do
-  name="grove-it-${version/./}"
+  name="ccinnmongo-it-${version/./}"
   port="$(port_for "$version")"
   platform="$(platform_for "$version")"
   if ! docker ps --format '{{.Names}}' | grep -qx "$name"; then
@@ -54,4 +54,4 @@ for version in "${VERSIONS[@]}"; do
 done
 
 joined="$(IFS=,; echo "${uris[*]}")"
-echo "export GROVE_IT_URIS=\"${joined}\""
+echo "export CCINNMONGO_IT_URIS=\"${joined}\""
