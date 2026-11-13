@@ -1,0 +1,56 @@
+{
+ "stages": [
+  {
+   "$cursor": {
+    "query": {
+     "n": {
+      "$lt": {"$numberInt": "50"}
+     }
+    },
+    "fields": {
+     "status": {"$numberInt": "1"},
+     "_id": {"$numberInt": "0"}
+    },
+    "plan": {
+     "cursor": "BtreeCursor n_1",
+     "isMultiKey": false,
+     "scanAndOrder": false,
+     "indexBounds": {
+      "n": [
+       [
+        {"$numberDouble": "-Infinity"},
+        {"$numberInt": "50"}
+       ]
+      ]
+     },
+     "allPlans": [
+      {
+       "cursor": "BtreeCursor n_1",
+       "isMultiKey": false,
+       "scanAndOrder": false,
+       "indexBounds": {
+        "n": [
+         [
+          {"$numberDouble": "-Infinity"},
+          {"$numberInt": "50"}
+         ]
+        ]
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "$group": {
+    "_id": "$status",
+    "c": {
+     "$sum": {
+      "$const": {"$numberInt": "1"}
+     }
+    }
+   }
+  }
+ ],
+ "ok": {"$numberDouble": "1.0"}
+}

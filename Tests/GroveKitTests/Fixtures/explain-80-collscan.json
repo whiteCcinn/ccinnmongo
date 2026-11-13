@@ -1,0 +1,85 @@
+{
+ "explainVersion": "1",
+ "queryPlanner": {
+  "namespace": "grove_fixture.orders",
+  "parsedQuery": {
+   "status": {
+    "$eq": "A"
+   }
+  },
+  "indexFilterSet": false,
+  "queryHash": "5D6543D9",
+  "planCacheShapeHash": "5D6543D9",
+  "planCacheKey": "405CB45D",
+  "optimizationTimeMillis": {"$numberInt": "0"},
+  "maxIndexedOrSolutionsReached": false,
+  "maxIndexedAndSolutionsReached": false,
+  "maxScansToExplodeReached": false,
+  "prunedSimilarIndexes": false,
+  "winningPlan": {
+   "isCached": false,
+   "stage": "COLLSCAN",
+   "filter": {
+    "status": {
+     "$eq": "A"
+    }
+   },
+   "direction": "forward"
+  },
+  "rejectedPlans": []
+ },
+ "executionStats": {
+  "executionSuccess": true,
+  "nReturned": {"$numberInt": "167"},
+  "executionTimeMillis": {"$numberInt": "0"},
+  "totalKeysExamined": {"$numberInt": "0"},
+  "totalDocsExamined": {"$numberInt": "500"},
+  "executionStages": {
+   "isCached": false,
+   "stage": "COLLSCAN",
+   "filter": {
+    "status": {
+     "$eq": "A"
+    }
+   },
+   "nReturned": {"$numberInt": "167"},
+   "executionTimeMillisEstimate": {"$numberInt": "0"},
+   "works": {"$numberInt": "501"},
+   "advanced": {"$numberInt": "167"},
+   "needTime": {"$numberInt": "333"},
+   "needYield": {"$numberInt": "0"},
+   "saveState": {"$numberInt": "0"},
+   "restoreState": {"$numberInt": "0"},
+   "isEOF": {"$numberInt": "1"},
+   "direction": "forward",
+   "docsExamined": {"$numberInt": "500"}
+  }
+ },
+ "queryShapeHash": "6026D7CFFA8E21731A50C9D116E63C5D77FE83E30B207F8FBEBD0CC22F655AAF",
+ "command": {
+  "find": "orders",
+  "filter": {
+   "status": "A"
+  },
+  "$db": "grove_fixture"
+ },
+ "serverInfo": {
+  "host": "0c3e944f7e19",
+  "port": {"$numberInt": "27017"},
+  "version": "8.0.38",
+  "gitVersion": "b2f7afe3a6838999fd375c7a7ea678189f795568"
+ },
+ "serverParameters": {
+  "internalQueryFacetBufferSizeBytes": {"$numberInt": "104857600"},
+  "internalQueryFacetMaxOutputDocSizeBytes": {"$numberInt": "104857600"},
+  "internalLookupStageIntermediateDocumentMaxSizeBytes": {"$numberInt": "104857600"},
+  "internalDocumentSourceGroupMaxMemoryBytes": {"$numberInt": "104857600"},
+  "internalQueryMaxBlockingSortMemoryUsageBytes": {"$numberInt": "104857600"},
+  "internalQueryProhibitBlockingMergeOnMongoS": {"$numberInt": "0"},
+  "internalQueryMaxAddToSetBytes": {"$numberInt": "104857600"},
+  "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": {"$numberInt": "104857600"},
+  "internalQueryFrameworkControl": "trySbeRestricted",
+  "internalQueryPlannerIgnoreIndexWithCollationForRegex": {"$numberInt": "1"}
+ },
+ "ok": {"$numberDouble": "1.0"}
+}

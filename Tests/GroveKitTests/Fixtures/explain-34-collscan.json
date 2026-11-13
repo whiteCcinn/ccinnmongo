@@ -1,0 +1,56 @@
+{
+ "queryPlanner": {
+  "plannerVersion": {"$numberInt": "1"},
+  "namespace": "grove_fixture.orders",
+  "indexFilterSet": false,
+  "parsedQuery": {
+   "status": {
+    "$eq": "A"
+   }
+  },
+  "winningPlan": {
+   "stage": "COLLSCAN",
+   "filter": {
+    "status": {
+     "$eq": "A"
+    }
+   },
+   "direction": "forward"
+  },
+  "rejectedPlans": []
+ },
+ "executionStats": {
+  "executionSuccess": true,
+  "nReturned": {"$numberInt": "167"},
+  "executionTimeMillis": {"$numberInt": "0"},
+  "totalKeysExamined": {"$numberInt": "0"},
+  "totalDocsExamined": {"$numberInt": "500"},
+  "executionStages": {
+   "stage": "COLLSCAN",
+   "filter": {
+    "status": {
+     "$eq": "A"
+    }
+   },
+   "nReturned": {"$numberInt": "167"},
+   "executionTimeMillisEstimate": {"$numberInt": "0"},
+   "works": {"$numberInt": "502"},
+   "advanced": {"$numberInt": "167"},
+   "needTime": {"$numberInt": "334"},
+   "needYield": {"$numberInt": "0"},
+   "saveState": {"$numberInt": "3"},
+   "restoreState": {"$numberInt": "3"},
+   "isEOF": {"$numberInt": "1"},
+   "invalidates": {"$numberInt": "0"},
+   "direction": "forward",
+   "docsExamined": {"$numberInt": "500"}
+  }
+ },
+ "serverInfo": {
+  "host": "36e030bf1db9",
+  "port": {"$numberInt": "27017"},
+  "version": "3.4.24",
+  "gitVersion": "865b4f6a96d0f5425e39a18337105f33e8db504d"
+ },
+ "ok": {"$numberDouble": "1.0"}
+}

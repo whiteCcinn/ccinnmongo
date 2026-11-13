@@ -1,0 +1,237 @@
+{
+ "clauses": [
+  {
+   "cursor": "BtreeCursor n_1",
+   "isMultiKey": false,
+   "n": {"$numberInt": "10"},
+   "nscannedObjects": {"$numberInt": "399"},
+   "nscanned": {"$numberInt": "399"},
+   "scanAndOrder": true,
+   "indexOnly": false,
+   "nChunkSkips": {"$numberInt": "0"},
+   "indexBounds": {
+    "n": [
+     [
+      {"$numberInt": "100"},
+      {"$numberDouble": "Infinity"}
+     ]
+    ]
+   }
+  },
+  {
+   "cursor": "BtreeCursor n_1",
+   "isMultiKey": false,
+   "n": {"$numberInt": "0"},
+   "nscannedObjects": {"$numberInt": "0"},
+   "nscanned": {"$numberInt": "0"},
+   "scanAndOrder": true,
+   "indexOnly": false,
+   "nChunkSkips": {"$numberInt": "0"},
+   "indexBounds": {
+    "n": [
+     [
+      {"$numberInt": "100"},
+      {"$numberDouble": "Infinity"}
+     ]
+    ]
+   }
+  }
+ ],
+ "cursor": "QueryOptimizerCursor",
+ "n": {"$numberInt": "10"},
+ "nscannedObjects": {"$numberInt": "399"},
+ "nscanned": {"$numberInt": "399"},
+ "nscannedObjectsAllPlans": {"$numberInt": "399"},
+ "nscannedAllPlans": {"$numberInt": "399"},
+ "scanAndOrder": false,
+ "nYields": {"$numberInt": "3"},
+ "nChunkSkips": {"$numberInt": "0"},
+ "millis": {"$numberInt": "3"},
+ "allPlans": [
+  {
+   "clauses": [
+    {
+     "cursor": "BtreeCursor n_1",
+     "isMultiKey": false,
+     "n": {"$numberInt": "10"},
+     "nscannedObjects": {"$numberInt": "399"},
+     "nscanned": {"$numberInt": "399"},
+     "scanAndOrder": true,
+     "indexOnly": false,
+     "nChunkSkips": {"$numberInt": "0"},
+     "indexBounds": {
+      "n": [
+       [
+        {"$numberInt": "100"},
+        {"$numberDouble": "Infinity"}
+       ]
+      ]
+     }
+    },
+    {
+     "cursor": "BtreeCursor n_1",
+     "isMultiKey": false,
+     "n": {"$numberInt": "0"},
+     "nscannedObjects": {"$numberInt": "0"},
+     "nscanned": {"$numberInt": "0"},
+     "scanAndOrder": true,
+     "indexOnly": false,
+     "nChunkSkips": {"$numberInt": "0"},
+     "indexBounds": {
+      "n": [
+       [
+        {"$numberInt": "100"},
+        {"$numberDouble": "Infinity"}
+       ]
+      ]
+     }
+    }
+   ],
+   "cursor": "QueryOptimizerCursor",
+   "n": {"$numberInt": "10"},
+   "nscannedObjects": {"$numberInt": "399"},
+   "nscanned": {"$numberInt": "399"},
+   "scanAndOrder": false,
+   "nChunkSkips": {"$numberInt": "0"}
+  }
+ ],
+ "server": "abc575cdec17:27017",
+ "filterSet": false,
+ "stats": {
+  "type": "KEEP_MUTATIONS",
+  "works": {"$numberInt": "411"},
+  "yields": {"$numberInt": "3"},
+  "unyields": {"$numberInt": "3"},
+  "invalidates": {"$numberInt": "0"},
+  "advanced": {"$numberInt": "10"},
+  "needTime": {"$numberInt": "401"},
+  "needFetch": {"$numberInt": "0"},
+  "isEOF": {"$numberInt": "0"},
+  "children": [
+   {
+    "type": "OR",
+    "works": {"$numberInt": "411"},
+    "yields": {"$numberInt": "3"},
+    "unyields": {"$numberInt": "3"},
+    "invalidates": {"$numberInt": "0"},
+    "advanced": {"$numberInt": "10"},
+    "needTime": {"$numberInt": "401"},
+    "needFetch": {"$numberInt": "0"},
+    "isEOF": {"$numberInt": "0"},
+    "dupsTested": {"$numberInt": "10"},
+    "dupsDropped": {"$numberInt": "0"},
+    "locsForgotten": {"$numberInt": "0"},
+    "matchTested_0": {"$numberInt": "0"},
+    "matchTested_1": {"$numberInt": "0"},
+    "children": [
+     {
+      "type": "SORT",
+      "works": {"$numberInt": "411"},
+      "yields": {"$numberInt": "3"},
+      "unyields": {"$numberInt": "3"},
+      "invalidates": {"$numberInt": "0"},
+      "advanced": {"$numberInt": "10"},
+      "needTime": {"$numberInt": "400"},
+      "needFetch": {"$numberInt": "0"},
+      "isEOF": {"$numberInt": "1"},
+      "forcedFetches": {"$numberInt": "0"},
+      "memUsage": {"$numberInt": "510"},
+      "memLimit": {"$numberInt": "33554432"},
+      "children": [
+       {
+        "type": "FETCH",
+        "works": {"$numberInt": "400"},
+        "yields": {"$numberInt": "3"},
+        "unyields": {"$numberInt": "3"},
+        "invalidates": {"$numberInt": "0"},
+        "advanced": {"$numberInt": "399"},
+        "needTime": {"$numberInt": "0"},
+        "needFetch": {"$numberInt": "0"},
+        "isEOF": {"$numberInt": "1"},
+        "alreadyHasObj": {"$numberInt": "0"},
+        "forcedFetches": {"$numberInt": "0"},
+        "matchTested": {"$numberInt": "0"},
+        "children": [
+         {
+          "type": "IXSCAN",
+          "works": {"$numberInt": "399"},
+          "yields": {"$numberInt": "3"},
+          "unyields": {"$numberInt": "3"},
+          "invalidates": {"$numberInt": "0"},
+          "advanced": {"$numberInt": "399"},
+          "needTime": {"$numberInt": "0"},
+          "needFetch": {"$numberInt": "0"},
+          "isEOF": {"$numberInt": "1"},
+          "keyPattern": "{ n: 1 }",
+          "isMultiKey": {"$numberInt": "0"},
+          "boundsVerbose": "field #0['n']: (100, inf.0]",
+          "yieldMovedCursor": {"$numberInt": "0"},
+          "dupsTested": {"$numberInt": "0"},
+          "dupsDropped": {"$numberInt": "0"},
+          "seenInvalidated": {"$numberInt": "0"},
+          "matchTested": {"$numberInt": "0"},
+          "keysExamined": {"$numberInt": "399"},
+          "children": []
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "SORT",
+      "works": {"$numberInt": "0"},
+      "yields": {"$numberInt": "3"},
+      "unyields": {"$numberInt": "3"},
+      "invalidates": {"$numberInt": "0"},
+      "advanced": {"$numberInt": "0"},
+      "needTime": {"$numberInt": "0"},
+      "needFetch": {"$numberInt": "0"},
+      "isEOF": {"$numberInt": "0"},
+      "forcedFetches": {"$numberInt": "0"},
+      "memUsage": {"$numberInt": "0"},
+      "memLimit": {"$numberInt": "33554432"},
+      "children": [
+       {
+        "type": "FETCH",
+        "works": {"$numberInt": "0"},
+        "yields": {"$numberInt": "3"},
+        "unyields": {"$numberInt": "3"},
+        "invalidates": {"$numberInt": "0"},
+        "advanced": {"$numberInt": "0"},
+        "needTime": {"$numberInt": "0"},
+        "needFetch": {"$numberInt": "0"},
+        "isEOF": {"$numberInt": "0"},
+        "alreadyHasObj": {"$numberInt": "0"},
+        "forcedFetches": {"$numberInt": "0"},
+        "matchTested": {"$numberInt": "0"},
+        "children": [
+         {
+          "type": "IXSCAN",
+          "works": {"$numberInt": "0"},
+          "yields": {"$numberInt": "3"},
+          "unyields": {"$numberInt": "3"},
+          "invalidates": {"$numberInt": "0"},
+          "advanced": {"$numberInt": "0"},
+          "needTime": {"$numberInt": "0"},
+          "needFetch": {"$numberInt": "0"},
+          "isEOF": {"$numberInt": "0"},
+          "keyPattern": "{ n: 1 }",
+          "isMultiKey": {"$numberInt": "0"},
+          "boundsVerbose": "field #0['n']: (100, inf.0]",
+          "yieldMovedCursor": {"$numberInt": "0"},
+          "dupsTested": {"$numberInt": "0"},
+          "dupsDropped": {"$numberInt": "0"},
+          "seenInvalidated": {"$numberInt": "0"},
+          "matchTested": {"$numberInt": "0"},
+          "keysExamined": {"$numberInt": "0"},
+          "children": []
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

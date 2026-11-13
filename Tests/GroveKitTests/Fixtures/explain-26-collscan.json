@@ -1,0 +1,41 @@
+{
+ "cursor": "BasicCursor",
+ "isMultiKey": false,
+ "n": {"$numberInt": "167"},
+ "nscannedObjects": {"$numberInt": "500"},
+ "nscanned": {"$numberInt": "500"},
+ "nscannedObjectsAllPlans": {"$numberInt": "500"},
+ "nscannedAllPlans": {"$numberInt": "500"},
+ "scanAndOrder": false,
+ "indexOnly": false,
+ "nYields": {"$numberInt": "3"},
+ "nChunkSkips": {"$numberInt": "0"},
+ "millis": {"$numberInt": "0"},
+ "allPlans": [
+  {
+   "cursor": "BasicCursor",
+   "isMultiKey": false,
+   "n": {"$numberInt": "167"},
+   "nscannedObjects": {"$numberInt": "500"},
+   "nscanned": {"$numberInt": "500"},
+   "scanAndOrder": false,
+   "indexOnly": false,
+   "nChunkSkips": {"$numberInt": "0"}
+  }
+ ],
+ "server": "abc575cdec17:27017",
+ "filterSet": false,
+ "stats": {
+  "type": "COLLSCAN",
+  "works": {"$numberInt": "502"},
+  "yields": {"$numberInt": "3"},
+  "unyields": {"$numberInt": "3"},
+  "invalidates": {"$numberInt": "0"},
+  "advanced": {"$numberInt": "167"},
+  "needTime": {"$numberInt": "334"},
+  "needFetch": {"$numberInt": "0"},
+  "isEOF": {"$numberInt": "1"},
+  "docsTested": {"$numberInt": "500"},
+  "children": []
+ }
+}

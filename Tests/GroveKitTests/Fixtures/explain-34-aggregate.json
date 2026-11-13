@@ -1,0 +1,63 @@
+{
+ "stages": [
+  {
+   "$cursor": {
+    "query": {
+     "n": {
+      "$lt": {"$numberInt": "50"}
+     }
+    },
+    "fields": {
+     "status": {"$numberInt": "1"},
+     "_id": {"$numberInt": "0"}
+    },
+    "queryPlanner": {
+     "plannerVersion": {"$numberInt": "1"},
+     "namespace": "grove_fixture.orders",
+     "indexFilterSet": false,
+     "parsedQuery": {
+      "n": {
+       "$lt": {"$numberInt": "50"}
+      }
+     },
+     "winningPlan": {
+      "stage": "FETCH",
+      "inputStage": {
+       "stage": "IXSCAN",
+       "keyPattern": {
+        "n": {"$numberInt": "1"}
+       },
+       "indexName": "n_1",
+       "isMultiKey": false,
+       "multiKeyPaths": {
+        "n": []
+       },
+       "isUnique": false,
+       "isSparse": false,
+       "isPartial": false,
+       "indexVersion": {"$numberInt": "2"},
+       "direction": "forward",
+       "indexBounds": {
+        "n": [
+         "[-inf.0, 50)"
+        ]
+       }
+      }
+     },
+     "rejectedPlans": []
+    }
+   }
+  },
+  {
+   "$group": {
+    "_id": "$status",
+    "c": {
+     "$sum": {
+      "$const": {"$numberInt": "1"}
+     }
+    }
+   }
+  }
+ ],
+ "ok": {"$numberDouble": "1.0"}
+}

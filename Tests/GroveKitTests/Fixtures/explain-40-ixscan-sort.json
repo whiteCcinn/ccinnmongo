@@ -1,0 +1,144 @@
+{
+ "queryPlanner": {
+  "plannerVersion": {"$numberInt": "1"},
+  "namespace": "grove_fixture.orders",
+  "indexFilterSet": false,
+  "parsedQuery": {
+   "n": {
+    "$gt": {"$numberInt": "100"}
+   }
+  },
+  "winningPlan": {
+   "stage": "SORT",
+   "sortPattern": {
+    "status": {"$numberInt": "1"}
+   },
+   "limitAmount": {"$numberInt": "10"},
+   "inputStage": {
+    "stage": "SORT_KEY_GENERATOR",
+    "inputStage": {
+     "stage": "FETCH",
+     "inputStage": {
+      "stage": "IXSCAN",
+      "keyPattern": {
+       "n": {"$numberInt": "1"}
+      },
+      "indexName": "n_1",
+      "isMultiKey": false,
+      "multiKeyPaths": {
+       "n": []
+      },
+      "isUnique": false,
+      "isSparse": false,
+      "isPartial": false,
+      "indexVersion": {"$numberInt": "2"},
+      "direction": "forward",
+      "indexBounds": {
+       "n": [
+        "(100, inf.0]"
+       ]
+      }
+     }
+    }
+   }
+  },
+  "rejectedPlans": []
+ },
+ "executionStats": {
+  "executionSuccess": true,
+  "nReturned": {"$numberInt": "10"},
+  "executionTimeMillis": {"$numberInt": "0"},
+  "totalKeysExamined": {"$numberInt": "399"},
+  "totalDocsExamined": {"$numberInt": "399"},
+  "executionStages": {
+   "stage": "SORT",
+   "nReturned": {"$numberInt": "10"},
+   "executionTimeMillisEstimate": {"$numberInt": "0"},
+   "works": {"$numberInt": "412"},
+   "advanced": {"$numberInt": "10"},
+   "needTime": {"$numberInt": "401"},
+   "needYield": {"$numberInt": "0"},
+   "saveState": {"$numberInt": "3"},
+   "restoreState": {"$numberInt": "3"},
+   "isEOF": {"$numberInt": "1"},
+   "invalidates": {"$numberInt": "0"},
+   "sortPattern": {
+    "status": {"$numberInt": "1"}
+   },
+   "memUsage": {"$numberInt": "510"},
+   "memLimit": {"$numberInt": "33554432"},
+   "limitAmount": {"$numberInt": "10"},
+   "inputStage": {
+    "stage": "SORT_KEY_GENERATOR",
+    "nReturned": {"$numberInt": "399"},
+    "executionTimeMillisEstimate": {"$numberInt": "0"},
+    "works": {"$numberInt": "401"},
+    "advanced": {"$numberInt": "399"},
+    "needTime": {"$numberInt": "1"},
+    "needYield": {"$numberInt": "0"},
+    "saveState": {"$numberInt": "3"},
+    "restoreState": {"$numberInt": "3"},
+    "isEOF": {"$numberInt": "1"},
+    "invalidates": {"$numberInt": "0"},
+    "inputStage": {
+     "stage": "FETCH",
+     "nReturned": {"$numberInt": "399"},
+     "executionTimeMillisEstimate": {"$numberInt": "0"},
+     "works": {"$numberInt": "400"},
+     "advanced": {"$numberInt": "399"},
+     "needTime": {"$numberInt": "0"},
+     "needYield": {"$numberInt": "0"},
+     "saveState": {"$numberInt": "3"},
+     "restoreState": {"$numberInt": "3"},
+     "isEOF": {"$numberInt": "1"},
+     "invalidates": {"$numberInt": "0"},
+     "docsExamined": {"$numberInt": "399"},
+     "alreadyHasObj": {"$numberInt": "0"},
+     "inputStage": {
+      "stage": "IXSCAN",
+      "nReturned": {"$numberInt": "399"},
+      "executionTimeMillisEstimate": {"$numberInt": "0"},
+      "works": {"$numberInt": "400"},
+      "advanced": {"$numberInt": "399"},
+      "needTime": {"$numberInt": "0"},
+      "needYield": {"$numberInt": "0"},
+      "saveState": {"$numberInt": "3"},
+      "restoreState": {"$numberInt": "3"},
+      "isEOF": {"$numberInt": "1"},
+      "invalidates": {"$numberInt": "0"},
+      "keyPattern": {
+       "n": {"$numberInt": "1"}
+      },
+      "indexName": "n_1",
+      "isMultiKey": false,
+      "multiKeyPaths": {
+       "n": []
+      },
+      "isUnique": false,
+      "isSparse": false,
+      "isPartial": false,
+      "indexVersion": {"$numberInt": "2"},
+      "direction": "forward",
+      "indexBounds": {
+       "n": [
+        "(100, inf.0]"
+       ]
+      },
+      "keysExamined": {"$numberInt": "399"},
+      "seeks": {"$numberInt": "1"},
+      "dupsTested": {"$numberInt": "0"},
+      "dupsDropped": {"$numberInt": "0"},
+      "seenInvalidated": {"$numberInt": "0"}
+     }
+    }
+   }
+  }
+ },
+ "serverInfo": {
+  "host": "e035976b8ee7",
+  "port": {"$numberInt": "27017"},
+  "version": "4.0.28",
+  "gitVersion": "af1a9dc12adcfa83cc19571cb3faba26eeddac92"
+ },
+ "ok": {"$numberDouble": "1.0"}
+}

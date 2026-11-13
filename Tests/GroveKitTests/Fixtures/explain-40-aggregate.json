@@ -1,0 +1,127 @@
+{
+ "stages": [
+  {
+   "$cursor": {
+    "query": {
+     "n": {
+      "$lt": {"$numberInt": "50"}
+     }
+    },
+    "fields": {
+     "status": {"$numberInt": "1"},
+     "_id": {"$numberInt": "0"}
+    },
+    "queryPlanner": {
+     "plannerVersion": {"$numberInt": "1"},
+     "namespace": "grove_fixture.orders",
+     "indexFilterSet": false,
+     "parsedQuery": {
+      "n": {
+       "$lt": {"$numberInt": "50"}
+      }
+     },
+     "winningPlan": {
+      "stage": "FETCH",
+      "inputStage": {
+       "stage": "IXSCAN",
+       "keyPattern": {
+        "n": {"$numberInt": "1"}
+       },
+       "indexName": "n_1",
+       "isMultiKey": false,
+       "multiKeyPaths": {
+        "n": []
+       },
+       "isUnique": false,
+       "isSparse": false,
+       "isPartial": false,
+       "indexVersion": {"$numberInt": "2"},
+       "direction": "forward",
+       "indexBounds": {
+        "n": [
+         "[-inf.0, 50)"
+        ]
+       }
+      }
+     },
+     "rejectedPlans": []
+    },
+    "executionStats": {
+     "executionSuccess": true,
+     "nReturned": {"$numberInt": "50"},
+     "executionTimeMillis": {"$numberInt": "0"},
+     "totalKeysExamined": {"$numberInt": "50"},
+     "totalDocsExamined": {"$numberInt": "50"},
+     "executionStages": {
+      "stage": "FETCH",
+      "nReturned": {"$numberInt": "50"},
+      "executionTimeMillisEstimate": {"$numberInt": "0"},
+      "works": {"$numberInt": "51"},
+      "advanced": {"$numberInt": "50"},
+      "needTime": {"$numberInt": "0"},
+      "needYield": {"$numberInt": "0"},
+      "saveState": {"$numberInt": "1"},
+      "restoreState": {"$numberInt": "1"},
+      "isEOF": {"$numberInt": "1"},
+      "invalidates": {"$numberInt": "0"},
+      "docsExamined": {"$numberInt": "50"},
+      "alreadyHasObj": {"$numberInt": "0"},
+      "inputStage": {
+       "stage": "IXSCAN",
+       "nReturned": {"$numberInt": "50"},
+       "executionTimeMillisEstimate": {"$numberInt": "0"},
+       "works": {"$numberInt": "51"},
+       "advanced": {"$numberInt": "50"},
+       "needTime": {"$numberInt": "0"},
+       "needYield": {"$numberInt": "0"},
+       "saveState": {"$numberInt": "1"},
+       "restoreState": {"$numberInt": "1"},
+       "isEOF": {"$numberInt": "1"},
+       "invalidates": {"$numberInt": "0"},
+       "keyPattern": {
+        "n": {"$numberInt": "1"}
+       },
+       "indexName": "n_1",
+       "isMultiKey": false,
+       "multiKeyPaths": {
+        "n": []
+       },
+       "isUnique": false,
+       "isSparse": false,
+       "isPartial": false,
+       "indexVersion": {"$numberInt": "2"},
+       "direction": "forward",
+       "indexBounds": {
+        "n": [
+         "[-inf.0, 50)"
+        ]
+       },
+       "keysExamined": {"$numberInt": "50"},
+       "seeks": {"$numberInt": "1"},
+       "dupsTested": {"$numberInt": "0"},
+       "dupsDropped": {"$numberInt": "0"},
+       "seenInvalidated": {"$numberInt": "0"}
+      }
+     }
+    }
+   }
+  },
+  {
+   "$group": {
+    "_id": "$status",
+    "c": {
+     "$sum": {
+      "$const": {"$numberInt": "1"}
+     }
+    }
+   }
+  }
+ ],
+ "serverInfo": {
+  "host": "e035976b8ee7",
+  "port": {"$numberInt": "27017"},
+  "version": "4.0.28",
+  "gitVersion": "af1a9dc12adcfa83cc19571cb3faba26eeddac92"
+ },
+ "ok": {"$numberDouble": "1.0"}
+}
