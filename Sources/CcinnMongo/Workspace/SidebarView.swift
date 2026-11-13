@@ -40,6 +40,7 @@ struct SidebarView: View {
             .listStyle(.sidebar)
             bottomBar
         }
+        .placedBelowWindowToolbar()
         .overlay {
             if let error = workspace.databasesError, workspace.databases.isEmpty {
                 VStack(spacing: 10) {

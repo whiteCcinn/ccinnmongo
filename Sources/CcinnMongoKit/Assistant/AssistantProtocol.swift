@@ -53,7 +53,9 @@ public struct AssistantQuery: Sendable, Equatable, Hashable {
         case .count:
             return "\(target).count(\(formatter.format(filter)))"
         case .aggregate:
-            return "\(target).aggregate(\(BSONFormatter(style: .shell, indent: 2).format(array: pipeline.map(BSONValue.document))))"
+            // One compact line per stage keeps long pipelines readable.
+            let stages = pipeline.map { "  " + formatter.format($0) }.joined(separator: ",\n")
+            return "\(target).aggregate([\n\(stages)\n])"
         }
     }
 }

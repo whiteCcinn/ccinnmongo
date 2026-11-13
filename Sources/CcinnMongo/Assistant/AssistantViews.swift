@@ -174,8 +174,11 @@ private struct QueryCard: View {
     let collection: String
     let open: (AssistantQuery) -> Void
     @State private var showResults = false
+    @State private var showFullQuery = false
 
     var body: some View {
+        let text = query.shellText(collection: collection)
+        let lineCount = text.split(separator: "\n").count
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Badge(text: query.kind.rawValue.uppercased(), color: Theme.accent)
@@ -191,10 +194,18 @@ private struct QueryCard: View {
                 Button(query.kind == .aggregate ? "Open in Aggregations" : "Open in Documents") { open(query) }
                     .controlSize(.small)
             }
-            Text(HighlightedText.make(query.shellText(collection: collection)))
+            Text(HighlightedText.make(text))
                 .font(Theme.monospacedSmall)
                 .textSelection(.enabled)
+                .lineLimit(showFullQuery ? nil : 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if lineCount > 8 {
+                Button(showFullQuery ? "Show less" : "Show all \(lineCount) lines") {
+                    withAnimation(.snappy) { showFullQuery.toggle() }
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
             if case let .finished(result)? = status, result.count == nil, !result.documents.isEmpty {
                 DisclosureGroup(isExpanded: $showResults) {
                     ScrollView(.horizontal) {

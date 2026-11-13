@@ -126,6 +126,16 @@ enum LaunchArguments {
                         model.explain.query = model.documents.query
                         model.explain.run()
                     case .aggregations: model.aggregation.schedulePreviews(from: nil)
+                    case .assistant:
+                        if let question = value("--ask") {
+                            Task { @MainActor in
+                                // Wait for CLI discovery before sending.
+                                for _ in 0..<50 where !AgentService.shared.hasScanned { try? await Task.sleep(for: .milliseconds(100)) }
+                                model.assistant.provider = AgentService.shared.activeProvider
+                                model.assistant.input = question
+                                model.assistant.send()
+                            }
+                        }
                     default: break
                     }
                 }

@@ -51,20 +51,33 @@ struct ConnectionsView: View {
     // MARK: Sidebar
 
     private var sidebar: some View {
-        List(selection: $selection) {
-            if !store.favorites.isEmpty {
-                Section("Favorites") { rows(filtered(store.favorites)) }
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Filter connections", text: $search)
+                    .textFieldStyle(.plain)
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                }
             }
-            if !store.recents.isEmpty {
-                Section("Recent") { rows(filtered(store.recents)) }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            List(selection: $selection) {
+                if !store.favorites.isEmpty {
+                    Section("Favorites") { rows(filtered(store.favorites)) }
+                }
+                if !store.recents.isEmpty {
+                    Section("Recent") { rows(filtered(store.recents)) }
+                }
+                if !store.others.isEmpty {
+                    Section("Saved") { rows(filtered(store.others)) }
+                }
             }
-            if !store.others.isEmpty {
-                Section("Saved") { rows(filtered(store.others)) }
-            }
-        }
-        .listStyle(.sidebar)
-        .searchable(text: $search, placement: .sidebar, prompt: "Filter connections")
-        .safeAreaInset(edge: .bottom) {
+            .listStyle(.sidebar)
             Button {
                 newConnection()
             } label: {
@@ -75,6 +88,7 @@ struct ConnectionsView: View {
             .buttonStyle(.borderedProminent)
             .padding(12)
         }
+        .placedBelowWindowToolbar()
         .overlay {
             if store.profiles.isEmpty {
                 ContentUnavailableView("No Saved Connections", systemImage: "leaf", description: Text("Create a connection to get started."))
