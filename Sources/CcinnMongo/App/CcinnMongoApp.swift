@@ -21,9 +21,14 @@ struct CcinnMongoApp: App {
         }
 
         Settings {
-            SettingsView()
-                .frame(width: 460)
-                .tint(Theme.accent)
+            TabView {
+                SettingsView()
+                    .tabItem { Label("General", systemImage: "gearshape") }
+                AISettingsView()
+                    .tabItem { Label("AI", systemImage: "sparkles") }
+            }
+            .frame(width: 520)
+            .tint(Theme.accent)
         }
     }
 }
@@ -35,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSWindow.allowsAutomaticWindowTabbing = false
         SnapshotTool.scheduleIfRequested()
+        Task { @MainActor in AgentService.shared.refresh() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

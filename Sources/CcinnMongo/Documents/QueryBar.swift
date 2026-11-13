@@ -7,7 +7,9 @@ struct QueryBar: View {
     @Bindable var model: DocumentsModel
     let completions: [String]
     var onExplain: (() -> Void)?
+    var tab: CollectionTabModel?
     @State private var showOptions = false
+    @State private var showAI = false
     @State private var history: [QueryHistoryEntry] = []
 
     var body: some View {
@@ -18,6 +20,17 @@ struct QueryBar: View {
                 AutoSizingCodeEditor(text: $model.query.filter, placeholder: "{ field: \"value\" }   Type a query or leave empty for all documents",
                                      completions: completions, error: errors[.filter], onSubmit: model.run)
                     .modifier(FieldChrome(hasError: errors[.filter] != nil))
+                if let tab {
+                    Button {
+                        showAI = true
+                    } label: {
+                        Image(systemName: "sparkles")
+                    }
+                    .help("Generate a query from a description (Claude Code / Codex)")
+                    .popover(isPresented: $showAI, arrowEdge: .bottom) {
+                        AIGeneratePopover(target: .find, tab: tab, isPresented: $showAI)
+                    }
+                }
                 Button {
                     withAnimation(.snappy) { showOptions.toggle() }
                 } label: {

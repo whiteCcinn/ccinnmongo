@@ -34,7 +34,7 @@ struct DocumentsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            QueryBar(model: model, completions: tab.knownFieldPaths, onExplain: tab.explainCurrentQuery)
+            QueryBar(model: model, completions: tab.knownFieldPaths, onExplain: tab.explainCurrentQuery, tab: tab)
             Divider()
             toolbar
             Divider()

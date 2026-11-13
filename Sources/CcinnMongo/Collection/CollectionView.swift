@@ -17,6 +17,7 @@ struct CollectionView: View {
                 case .schema: SchemaView(model: model.schema, tab: model)
                 case .indexes: IndexesView(model: model.indexes, tab: model)
                 case .explain: ExplainView(model: model.explain, tab: model)
+                case .assistant: AssistantView(model: model.assistant)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

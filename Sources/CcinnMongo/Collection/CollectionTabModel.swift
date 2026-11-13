@@ -14,6 +14,7 @@ final class CollectionTabModel {
         case schema = "Schema"
         case indexes = "Indexes"
         case explain = "Explain Plan"
+        case assistant = "Assistant"
 
         var id: String { rawValue }
 
@@ -24,6 +25,7 @@ final class CollectionTabModel {
             case .schema: "chart.bar.doc.horizontal"
             case .indexes: "list.bullet.indent"
             case .explain: "point.3.connected.trianglepath.dotted"
+            case .assistant: "sparkles"
             }
         }
     }
@@ -39,6 +41,7 @@ final class CollectionTabModel {
     @ObservationIgnored private var schemaModel: SchemaModel?
     @ObservationIgnored private var indexesModel: IndexesModel?
     @ObservationIgnored private var explainModel: ExplainModel?
+    @ObservationIgnored private var assistantModel: AssistantModel?
 
     init(namespace: MongoNamespace, info: CollectionInfo?, workspace: WorkspaceModel) {
         self.namespace = namespace
@@ -79,6 +82,13 @@ final class CollectionTabModel {
         return model
     }
 
+    var assistant: AssistantModel {
+        if let assistantModel { return assistantModel }
+        let model = AssistantModel(namespace: namespace, tab: self)
+        assistantModel = model
+        return model
+    }
+
     /// Field paths known for this collection (for completion).
     var knownFieldPaths: [String] {
         var paths = documents.fieldPaths
@@ -104,5 +114,6 @@ final class CollectionTabModel {
         aggregationModel?.cancel()
         schemaModel?.cancel()
         explainModel?.cancel()
+        if assistantModel?.isRunning == true { assistantModel?.cancel() }
     }
 }

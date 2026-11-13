@@ -6,6 +6,7 @@ import SwiftUI
 struct AggregationView: View {
     @Bindable var model: AggregationModel
     let tab: CollectionTabModel
+    @State private var showAI = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,6 +43,15 @@ struct AggregationView: View {
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .onChange(of: model.autoPreview) { _, enabled in if enabled { model.schedulePreviews(from: nil) } }
+            }
+            Button {
+                showAI = true
+            } label: {
+                Label("Generate", systemImage: "sparkles")
+            }
+            .help("Generate a pipeline from a description (Claude Code / Codex)")
+            .popover(isPresented: $showAI, arrowEdge: .bottom) {
+                AIGeneratePopover(target: .pipeline, tab: tab, isPresented: $showAI)
             }
             Spacer()
             Text("\(model.pipeline.stages.filter(\.isEnabled).count) of \(model.pipeline.stages.count) stages enabled")
