@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Builds CcinnMongo.app (release, ad-hoc signed) into ./dist.
 #
-#   scripts/build-app.sh            # build dist/CcinnMongo.app
-#   scripts/build-app.sh --open     # build and launch
+#   scripts/build-app.sh                 # build dist/CcinnMongo.app for this Mac's architecture
+#   scripts/build-app.sh --universal     # Apple silicon + Intel
+#   scripts/build-app.sh --open          # build and launch
+#   CCINNMONGO_VERSION=1.2.3 scripts/build-app.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,9 +15,19 @@ DIST="$ROOT/dist"
 APP="$DIST/$APP_NAME.app"
 ICON="$ROOT/Resources/AppIcon.icns"
 
+ARCH_ARGS=()
+OPEN_AFTER=false
+for argument in "$@"; do
+  case "$argument" in
+    --universal) ARCH_ARGS=(--arch arm64 --arch x86_64) ;;
+    --open) OPEN_AFTER=true ;;
+    *) echo "unknown option: $argument" >&2; exit 1 ;;
+  esac
+done
+
 cd "$ROOT"
-swift build -c release --product "$APP_NAME"
-BIN_DIR="$(swift build -c release --show-bin-path)"
+swift build -c release --product "$APP_NAME" ${ARCH_ARGS[@]+"${ARCH_ARGS[@]}"}
+BIN_DIR="$(swift build -c release --show-bin-path ${ARCH_ARGS[@]+"${ARCH_ARGS[@]}"})"
 
 if [[ ! -f "$ICON" ]]; then
   ICONSET="$(mktemp -d)/AppIcon.iconset"
@@ -54,6 +66,6 @@ PLIST
 codesign --force --deep --sign - "$APP" >/dev/null
 echo "Built $APP"
 
-if [[ "${1:-}" == "--open" ]]; then
+if [[ "$OPEN_AFTER" == true ]]; then
   open "$APP"
 fi
