@@ -15,6 +15,8 @@ final class ConnectionDraft {
     }
 
     let profileID: UUID?
+    /// The saved profile being edited (nil for a new connection), for bookkeeping the editor does not show.
+    private let original: ConnectionProfile?
     var name: String
     var color: ProfileColor
     var isFavorite: Bool
@@ -22,6 +24,7 @@ final class ConnectionDraft {
     var sshEnabled: Bool
     var ssh: SSHTunnelConfiguration
     var sshSecret: String
+    var mcpAccess: MCPAccessLevel
 
     /// Structured form; the source of truth.
     var form: ConnectionForm {
@@ -47,6 +50,7 @@ final class ConnectionDraft {
 
     init(profile: ConnectionProfile?, store: ProfileStore) {
         profileID = profile?.id
+        original = profile
         name = profile?.name ?? ""
         color = profile?.color ?? .green
         isFavorite = profile?.isFavorite ?? false
@@ -54,6 +58,7 @@ final class ConnectionDraft {
         sshEnabled = profile?.ssh != nil
         ssh = profile?.ssh ?? SSHTunnelConfiguration(host: "", username: NSUserName(), authentication: .agent)
         sshSecret = profile.flatMap { store.sshSecret(for: $0) } ?? ""
+        mcpAccess = profile?.mcpAccess ?? .disabled
         if let profile, let uri = try? store.connectionString(for: profile) {
             form = ConnectionForm(uri)
         } else {
@@ -68,8 +73,11 @@ final class ConnectionDraft {
     var isValid: Bool { uriError == nil && !form.hosts.filter { !$0.host.isEmpty }.isEmpty }
 
     func makeProfile() -> ConnectionProfile {
-        ConnectionProfile(id: profileID ?? UUID(), name: name.trimmingCharacters(in: .whitespaces), uri: form.uri.description,
-                          color: color, isFavorite: isFavorite, ssh: sshEnabled ? ssh : nil, allowLegacyTLS: allowLegacyTLS)
+        var profile = ConnectionProfile(id: profileID ?? UUID(), name: name.trimmingCharacters(in: .whitespaces), uri: form.uri.description,
+                                        color: color, isFavorite: isFavorite, ssh: sshEnabled ? ssh : nil, allowLegacyTLS: allowLegacyTLS,
+                                        mcpAccess: mcpAccess)
+        if let original { profile.preserveHistory(from: original) }
+        return profile
     }
 
     // MARK: Sync
@@ -119,8 +127,7 @@ final class ConnectionDraft {
             do {
                 let opened = try await ConnectionOpener.open(uri: uri, ssh: ssh, sshSecret: secret, allowLegacyTLS: legacy, progress: report)
                 let info = opened.info
-                await opened.client.close()
-                opened.tunnel?.close()
+                await opened.close()
                 guard !Task.isCancelled else { return }
                 let topology = info.setName.map { "\(info.serverType.displayName) · \($0)" } ?? info.serverType.displayName
                 self.testState = .succeeded("MongoDB \(info.version) · \(topology) · \(info.protocolName)")
