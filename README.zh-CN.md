@@ -148,6 +148,27 @@ CcinnMongo（SwiftUI 应用）
 - **并发安全：** 连接与连接池均为 Swift actor，项目在 Swift 6 严格并发模式下编译。
 - **健壮解析：** BSON 解析带边界检查和深度限制，遇到畸形数据会抛出错误，而不是崩溃。
 
+## ccinn 系列
+
+同样注重设计、速度与细节的原生 macOS 数据工具：
+
+| 应用 | 简介 |
+|---|---|
+| **CcinnMongo** *（本项目）* | 原生 MongoDB 客户端，支持 2.6 到 8.x 的所有版本，同时支持旧版 `OP_QUERY` 与新版 `OP_MSG` 协议。 |
+| [**CcinnStarRocks**](https://github.com/whiteCcinn/ccinnstarrocks) | 原生 StarRocks 客户端，涵盖分区、Tablet 与倾斜分析、异步/同步物化视图、运行中任务，以及带补全和图表的 SQL。 |
+| [**CcinnRedis**](https://github.com/whiteCcinn/ccinnredis) | 原生 Redis 客户端，支持 Redis 2.8 → 8.x 与 Valkey，覆盖单机、Sentinel、Cluster 与代理部署。 |
+| [**CcinnBucket**](https://github.com/whiteCcinn/ccinnbucket) | 对象存储浏览器，支持 Amazon S3、S3 兼容服务与阿里云 OSS。 |
+
+## 贡献者
+
+- [whiteCcinn](https://github.com/whiteCcinn)
+
+<a href="https://github.com/whiteCcinn/ccinnmongo/graphs/contributors"><img src="https://contrib.rocks/image?repo=whiteCcinn/ccinnmongo" alt="贡献者"></a>
+
+## Star 趋势
+
+[![Star 趋势图](https://api.star-history.com/svg?repos=whiteCcinn/ccinnmongo&type=Date)](https://star-history.com/#whiteCcinn/ccinnmongo&Date)
+
 ## 参与贡献
 
 欢迎贡献！请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 私下报告。

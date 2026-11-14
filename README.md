@@ -148,6 +148,27 @@ CcinnMongo (SwiftUI app)
 - **Concurrency safety:** connections and pools are Swift actors, and the project builds in Swift 6 strict-concurrency mode.
 - **Robust parsing:** BSON parsing is bounds-checked and depth-limited, so malformed data raises errors instead of crashing.
 
+## The ccinn series
+
+Native macOS database and storage tools that share the same design, speed and care:
+
+| App | What it is |
+|---|---|
+| **CcinnMongo** *(this project)* | Native MongoDB client for every server from 2.6 to 8.x, with the legacy `OP_QUERY` and the modern `OP_MSG` protocols. |
+| [**CcinnStarRocks**](https://github.com/whiteCcinn/ccinnstarrocks) | Native StarRocks client. Covers partitions, tablets and skew, async and sync materialized views, running tasks, and SQL with completion and charts. |
+| [**CcinnRedis**](https://github.com/whiteCcinn/ccinnredis) | Native Redis client for Redis 2.8 → 8.x and Valkey, in standalone, Sentinel, Cluster and proxy deployments. |
+| [**CcinnBucket**](https://github.com/whiteCcinn/ccinnbucket) | Object storage browser for Amazon S3, S3-compatible services and Alibaba Cloud OSS. |
+
+## Contributors
+
+- [whiteCcinn](https://github.com/whiteCcinn)
+
+<a href="https://github.com/whiteCcinn/ccinnmongo/graphs/contributors"><img src="https://contrib.rocks/image?repo=whiteCcinn/ccinnmongo" alt="Contributors"></a>
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=whiteCcinn/ccinnmongo&type=Date)](https://star-history.com/#whiteCcinn/ccinnmongo&Date)
+
 ## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md), and report security issues privately as described in [SECURITY.md](SECURITY.md).
