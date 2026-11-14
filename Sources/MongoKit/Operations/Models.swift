@@ -191,17 +191,34 @@ public struct IndexUsage: Sendable, Hashable {
     public var name: String
     public var operations: Int64
     public var since: Date?
+
+    public init(name: String, operations: Int64, since: Date?) {
+        self.name = name
+        self.operations = operations
+        self.since = since
+    }
 }
 
 public struct InsertResult: Sendable {
     public var insertedCount: Int
     public var insertedIDs: [BSONValue]
+
+    public init(insertedCount: Int, insertedIDs: [BSONValue]) {
+        self.insertedCount = insertedCount
+        self.insertedIDs = insertedIDs
+    }
 }
 
 public struct UpdateResult: Sendable {
     public var matchedCount: Int
     public var modifiedCount: Int
     public var upsertedID: BSONValue?
+
+    public init(matchedCount: Int, modifiedCount: Int, upsertedID: BSONValue?) {
+        self.matchedCount = matchedCount
+        self.modifiedCount = modifiedCount
+        self.upsertedID = upsertedID
+    }
 }
 
 /// Normalised view of `collStats`.
