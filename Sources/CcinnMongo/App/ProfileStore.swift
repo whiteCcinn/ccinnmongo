@@ -69,6 +69,13 @@ final class ProfileStore {
         try? persist()
     }
 
+    /// Changes only the AI access level (secrets and the rest of the profile stay untouched).
+    func setMCPAccess(_ level: MCPAccessLevel, for id: UUID) {
+        guard let index = profiles.firstIndex(where: { $0.id == id }), profiles[index].mcpAccess != level else { return }
+        profiles[index].mcpAccess = level
+        try? persist()
+    }
+
     func markConnected(_ id: UUID) {
         guard let index = profiles.firstIndex(where: { $0.id == id }) else { return }
         profiles[index].lastConnectedAt = Date()

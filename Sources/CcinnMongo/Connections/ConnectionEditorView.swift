@@ -11,7 +11,8 @@ struct ConnectionEditorView: View {
     let session: WindowSession
     let onSaved: (ConnectionProfile) -> Void
 
-    @State private var section: Section = .general
+    @State private var section: Section = Section.initial
+    @Environment(\.openSettings) private var openSettings
     @State private var saveError: String?
     @State private var showPassword = false
 
@@ -21,7 +22,14 @@ struct ConnectionEditorView: View {
         case tls = "TLS / SSL"
         case ssh = "SSH Tunnel"
         case advanced = "Advanced"
+        case aiAccess = "AI Access"
         var id: String { rawValue }
+
+        /// `--editor-section <name>` (prefix of the title, e.g. `ai`) for automated snapshots.
+        @MainActor static var initial: Section {
+            guard let name = LaunchArguments.value("--editor-section")?.lowercased() else { return .general }
+            return allCases.first { $0.rawValue.lowercased().hasPrefix(name) } ?? .general
+        }
 
         var icon: String {
             switch self {
@@ -30,6 +38,7 @@ struct ConnectionEditorView: View {
             case .tls: "lock"
             case .ssh: "lock.shield"
             case .advanced: "slider.horizontal.3"
+            case .aiAccess: "sparkles"
             }
         }
     }
@@ -55,6 +64,7 @@ struct ConnectionEditorView: View {
                         case .tls: tlsSection
                         case .ssh: sshSection
                         case .advanced: advancedSection
+                        case .aiAccess: aiAccessSection
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -293,6 +303,47 @@ struct ConnectionEditorView: View {
         }
         .formStyle(.grouped)
         .scrollDisabled(true)
+    }
+
+    private var aiAccessSection: some View {
+        Form {
+            Picker("AI access via MCP", selection: $draft.mcpAccess) {
+                ForEach(MCPAccessLevel.allCases) { level in
+                    Text(level.displayName).tag(level)
+                }
+            }
+            .pickerStyle(.segmented)
+            Label {
+                Text(aiAccessExplanation).fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: draft.mcpAccess == .readWrite ? "exclamationmark.triangle" : (draft.mcpAccess == .disabled ? "lock" : "eye"))
+            }
+            .font(.callout)
+            .foregroundStyle(draft.mcpAccess == .readWrite ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+            Text("AI clients such as Claude Code, Claude Desktop and Codex connect through the MCP server built into CcinnMongo. Passwords stay in your Keychain; the AI client only sees query results. Every call is recorded in the audit log.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            LabeledContent("Client setup") {
+                Button("Open MCP Settings…") {
+                    SettingsNavigation.shared.tab = .mcp
+                    openSettings()
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+    }
+
+    private var aiAccessExplanation: String {
+        switch draft.mcpAccess {
+        case .disabled:
+            "AI clients cannot see or use this connection."
+        case .readOnly:
+            "AI clients can list databases and collections, sample schemas and run find, aggregate, count and explain. CcinnMongo refuses writes, $out/$merge, server-side JavaScript and credential collections, and limits each call to 1,000 documents and 120 seconds."
+        case .readWrite:
+            "AI clients can also insert documents and update or delete matching documents. Updates and deletes refuse to touch more than 100 documents unless the client raises the limit (at most 10,000). Use only for data you can afford to lose."
+        }
     }
 
     @ViewBuilder

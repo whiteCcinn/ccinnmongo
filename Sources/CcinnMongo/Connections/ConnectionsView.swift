@@ -170,6 +170,12 @@ private struct ProfileRow: View {
             if profile.ssh != nil {
                 Image(systemName: "lock.shield").foregroundStyle(.secondary).help("SSH tunnel")
             }
+            if profile.mcpAccess != .disabled {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(profile.mcpAccess == .readWrite ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .imageScale(.small)
+                    .help("AI access via MCP: \(profile.mcpAccess.displayName)")
+            }
             if profile.isFavorite {
                 Image(systemName: "star.fill").foregroundStyle(.yellow).imageScale(.small)
             }

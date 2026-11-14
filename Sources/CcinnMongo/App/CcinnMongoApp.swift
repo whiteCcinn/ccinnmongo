@@ -21,15 +21,29 @@ struct CcinnMongoApp: App {
         }
 
         Settings {
-            TabView {
-                SettingsView()
-                    .tabItem { Label("General", systemImage: "gearshape") }
-                AISettingsView()
-                    .tabItem { Label("AI", systemImage: "sparkles") }
-            }
-            .frame(width: 520)
-            .tint(Theme.accent)
+            SettingsRootView()
         }
+    }
+}
+
+/// The Settings window: General, AI assistant and MCP server panes.
+struct SettingsRootView: View {
+    @Bindable private var navigation = SettingsNavigation.shared
+
+    var body: some View {
+        TabView(selection: $navigation.tab) {
+            SettingsView()
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
+            AISettingsView()
+                .tabItem { Label("AI", systemImage: "sparkles") }
+                .tag(SettingsTab.ai)
+            MCPSettingsView()
+                .tabItem { Label("MCP", systemImage: "point.3.connected.trianglepath.dotted") }
+                .tag(SettingsTab.mcp)
+        }
+        .frame(width: 580)
+        .tint(Theme.accent)
     }
 }
 
@@ -39,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         NSWindow.allowsAutomaticWindowTabbing = false
+        LaunchArguments.openSettingsIfRequested()
         SnapshotTool.scheduleIfRequested()
         Task { @MainActor in AgentService.shared.refresh() }
     }
@@ -54,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// Per-window root: connection manager, progress, or workspace.
 struct RootView: View {
     @State private var session = WindowSession()
+    @Environment(\.openSettings) private var openSettings
     private let store = AppServices.shared.profiles
 
     var body: some View {
@@ -74,7 +90,10 @@ struct RootView: View {
         .focusedSceneValue(\.windowSession, session)
         .navigationTitle(windowTitle)
         .onDisappear { session.disconnect() }
-        .task { LaunchArguments.consume(into: session) }
+        .task {
+            LaunchArguments.consume(into: session)
+            LaunchArguments.openSettingsOnce(openSettings)
+        }
     }
 
     private var phaseKey: Int {
@@ -96,9 +115,34 @@ struct RootView: View {
 
 /// Developer conveniences / deep links:
 /// `CcinnMongo --connect <uri> [--namespace db.collection] [--section documents|aggregations|schema|indexes|explain] [--view list|json|table]`
+/// `CcinnMongo --settings general|ai|mcp` opens the Settings window on that pane;
+/// `CcinnMongo --editor-section general|authentication|tls|ssh|advanced|ai` selects the connection editor pane.
 @MainActor
 enum LaunchArguments {
     private static var consumed = false
+
+    static func value(_ flag: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+        return arguments[index + 1]
+    }
+
+    static var settingsTab: SettingsTab? { value("--settings").flatMap { SettingsTab(rawValue: $0.lowercased()) } }
+
+    private static var openedSettings = false
+
+    /// Selects the requested pane; the first window then opens Settings through `openSettings`
+    /// (the `showSettingsWindow:` action no longer opens SwiftUI settings on recent macOS).
+    static func openSettingsIfRequested() {
+        guard let tab = settingsTab else { return }
+        SettingsNavigation.shared.tab = tab
+    }
+
+    static func openSettingsOnce(_ openSettings: OpenSettingsAction) {
+        guard settingsTab != nil, !openedSettings else { return }
+        openedSettings = true
+        openSettings()
+    }
 
     static func consume(into session: WindowSession) {
         guard !consumed else { return }
@@ -165,8 +209,11 @@ enum SnapshotTool {
             delay = parsed
         }
         let quit = arguments.contains("--quit-after-snapshot")
+        let wantsSettings = LaunchArguments.settingsTab != nil
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            if let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && $0.frame.width > 400 }),
+            let visible = NSApp.windows.filter { $0.isVisible && $0.contentView != nil && $0.frame.width > 400 }
+            let settings = visible.first { $0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true }
+            if let window = (wantsSettings ? settings ?? NSApp.keyWindow : nil) ?? visible.first,
                let view = window.contentView?.superview ?? window.contentView,
                let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                 view.cacheDisplay(in: view.bounds, to: bitmap)
