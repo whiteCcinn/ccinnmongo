@@ -17,8 +17,11 @@ public struct MCPToolFailure: Error, Sendable, Equatable, CustomStringConvertibl
 /// Builds on the assistant's `QuerySafetyPolicy` (no `$out`/`$merge`, no server-side JavaScript at any
 /// depth) and adds MCP-specific rules: no change streams and no credential-bearing collections.
 public enum MCPQueryPolicy {
-    /// Collections whose documents contain credentials or replicate them.
-    static let protectedCollections: Set<String> = ["system.users", "system.keys", "oplog.rs", "oplog.$main"]
+    /// Collections whose documents contain credentials or replicate them: users (including the copies kept by the
+    /// 2.6/3.0 auth schema upgrade), cluster HMAC keys (also `config.external_validation_keys` on sharded 5.0+)
+    /// and the oplog.
+    static let protectedCollections: Set<String> = ["system.users", "system.backup_users", "system.new_users", "system.keys",
+                                                    "external_validation_keys", "oplog.rs", "oplog.$main"]
     /// Stages that never terminate on their own.
     static let unboundedStages: Set<String> = ["$changeStream"]
     /// Keys whose string value names another collection inside a pipeline.

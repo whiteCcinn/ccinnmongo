@@ -58,6 +58,7 @@ public protocol MCPAuditSink: Sendable {
 public actor MCPAuditLog: MCPAuditSink {
     public static let fileName = "mcp-audit.jsonl"
     public static let rotatedFileName = "mcp-audit.1.jsonl"
+    static let lockFileName = ".mcp-audit.lock"
 
     private let directory: URL
     private let maxBytes: Int
@@ -83,15 +84,25 @@ public actor MCPAuditLog: MCPAuditSink {
         }
     }
 
-    /// Appends one line with a single `write(2)` on an `O_APPEND` descriptor, so lines from several MCP
-    /// processes (e.g. Claude Code and Codex) never overwrite or interleave with each other.
+    /// Appends one line with a single `write(2)` on an `O_APPEND` descriptor. Several MCP processes (e.g.
+    /// Claude Code and Codex) may share the file, so the size check, rotation and append run under an exclusive
+    /// `flock` on a lock file: without it, two processes could both decide to rotate and the second rename would
+    /// replace the rotated history with a nearly empty file.
     private func append(_ data: Data) throws {
         let manager = FileManager.default
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let lockPath = directory.appendingPathComponent(Self.lockFileName).path
+        let lock = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard lock >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(lock) }
+        while flock(lock, LOCK_EX) != 0 {
+            guard errno == EINTR else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        }
+        defer { flock(lock, LOCK_UN) }
+
         let path = fileURL.path
         if let size = (try? manager.attributesOfItem(atPath: path))?[.size] as? NSNumber,
            size.intValue + data.count > maxBytes {
-            // rename(2) is atomic; a concurrent writer simply continues in the rotated file or a new one.
             let rotated = directory.appendingPathComponent(Self.rotatedFileName).path
             _ = rename(path, rotated)
         }

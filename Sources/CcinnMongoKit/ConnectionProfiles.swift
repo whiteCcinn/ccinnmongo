@@ -109,6 +109,18 @@ public struct ConnectionProfile: Codable, Identifiable, Hashable, Sendable {
         mcpAccess = try container.decodeIfPresent(MCPAccessLevel.self, forKey: .mcpAccess) ?? .disabled
     }
 
+    /// A copy for "Duplicate": new id and history, and no AI access — a new connection is never exposed to
+    /// AI clients without an explicit choice, even when it is copied from one that is.
+    public func duplicated() -> ConnectionProfile {
+        var copy = self
+        copy.id = UUID()
+        copy.name = displayName + " copy"
+        copy.createdAt = Date()
+        copy.lastConnectedAt = nil
+        copy.mcpAccess = .disabled
+        return copy
+    }
+
     /// Keeps bookkeeping that an editor does not show (creation and last-connected times).
     public mutating func preserveHistory(from original: ConnectionProfile) {
         createdAt = original.createdAt

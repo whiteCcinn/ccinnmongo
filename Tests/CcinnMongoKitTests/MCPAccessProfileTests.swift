@@ -124,3 +124,18 @@ struct MCPAccessMergeTests {
         #expect(MCPAccessLevel.merge(edited: .disabled, original: .disabled, stored: nil) == .disabled)
     }
 }
+
+@Suite("Profile duplication")
+struct ProfileDuplicationTests {
+    @Test func duplicatesStartWithoutAIAccessOrHistory() {
+        let original = ConnectionProfile(name: "Prod", uri: "mongodb://db/", isFavorite: true, createdAt: Date(timeIntervalSince1970: 1),
+                                         lastConnectedAt: Date(timeIntervalSince1970: 2), mcpAccess: .readWrite)
+        let copy = original.duplicated()
+        #expect(copy.id != original.id)
+        #expect(copy.name == "Prod copy")
+        #expect(copy.mcpAccess == .disabled)
+        #expect(copy.lastConnectedAt == nil)
+        #expect(copy.uri == original.uri)
+        #expect(copy.createdAt > original.createdAt)
+    }
+}

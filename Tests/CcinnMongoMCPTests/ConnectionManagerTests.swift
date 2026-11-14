@@ -121,10 +121,47 @@ struct ConnectionManagerTests {
         await manager.closeAll()
     }
 
+    @Test func openingThatFailsAfterItsWaiterLeftIsNotCached() async throws {
+        let opener = FakeOpener()
+        opener.delay = .milliseconds(300)
+        opener.failNext = true
+        let manager = MCPConnectionManager(opener: opener)
+        let waiter = Task { try await manager.session(for: profile) }
+        try await waitUntil { opener.opens == 1 }
+        waiter.cancel()
+        _ = await waiter.result
+        // Let the shared opening fail with nobody waiting for it.
+        try await Task.sleep(for: .milliseconds(600))
+        opener.delay = .zero
+        _ = try await manager.session(for: profile)
+        #expect(opener.opens == 2)
+        await manager.closeAll()
+    }
+
     @Test func closedManagerRefusesNewSessions() async throws {
         let manager = MCPConnectionManager(opener: FakeOpener())
         await manager.closeAll()
         await #expect(throws: (any Error).self) { try await manager.session(for: profile) }
+    }
+}
+
+@Suite("Profile session opener")
+struct ProfileSessionOpenerTests {
+    @Test func invalidConnectionStringsNeverEchoTheParserText() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ccinnmongo-mcp-opener-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let repository = ProfileRepository(directory: directory, secrets: InMemorySecretStore())
+        // A hand-edited profile whose inline password contains '/', so the parser reports part of it as the port.
+        let profile = ConnectionProfile(name: "Broken", uri: "mongodb://admin:S3cr3tPart/rest@127.0.0.1:1/", mcpAccess: .readOnly)
+        do {
+            _ = try await ProfileSessionOpener(repository: repository).open(profile)
+            Issue.record("expected a failure")
+        } catch {
+            let message = "\(error)"
+            #expect(!message.contains("S3cr3t"))
+            #expect(!message.contains("rest@"))
+            #expect(message.contains("Broken"))
+        }
     }
 }
 
@@ -166,6 +203,28 @@ struct AuditLogTests {
         let lines = try String(contentsOf: directory.appendingPathComponent("mcp-audit.jsonl"), encoding: .utf8).split(separator: "\n")
         #expect(lines.count == 600)
         for line in lines { #expect(throws: Never.self) { try JSONParser.parse(String(line)) } }
+    }
+
+    @Test func concurrentRotationNeverDiscardsAFullLog() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ccinnmongo-mcp-audit-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let maxBytes = 20_000
+        let logs = (0..<4).map { _ in MCPAuditLog(directory: directory, maxBytes: maxBytes) }
+        await withTaskGroup(of: Void.self) { group in
+            for (number, log) in logs.enumerated() {
+                group.addTask {
+                    for index in 0..<150 {
+                        await log.record(MCPAuditRecord(date: Date(), connection: "p\(number)", connectionID: nil, tool: "find",
+                                                        operation: "op \(index) " + String(repeating: "x", count: 250),
+                                                        durationMilliseconds: 1, documents: 1, error: nil))
+                    }
+                }
+            }
+        }
+        // Rotation only ever moves a nearly full log aside; a racing second rename would replace it with a stub.
+        let rotated = try FileManager.default.attributesOfItem(atPath: directory.appendingPathComponent("mcp-audit.1.jsonl").path)
+        let size = (rotated[.size] as? NSNumber)?.intValue ?? 0
+        #expect(size > maxBytes - 1_000)
     }
 
     @Test func appendsJSONLinesAndRotates() async throws {

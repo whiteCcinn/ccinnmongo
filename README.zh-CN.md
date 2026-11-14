@@ -168,7 +168,7 @@ CcinnMongo 内置 [Model Context Protocol](https://modelcontextprotocol.io)（MC
 
 **安全模型：**
 - 所有连接默认关闭 AI 访问，需要逐个开启；`--read-only` 会把所有连接限制为只读。
-- 只读限制由 CcinnMongo 自己在请求到达服务器之前执行，而不是依赖 AI 客户端。读取类工具只会构造读操作；`$out` 和 `$merge`（任意嵌套层级，包括 `$facet`、`$lookup`、`$unionWith` 子管道）、`$changeStream`、服务端 JavaScript（`$where`、`$function`、`$accumulator`、代码值）以及含有凭据的集合（`system.users`、`system.keys`、oplog）都会被拒绝。
+- 只读限制由 CcinnMongo 自己在请求到达服务器之前执行，而不是依赖 AI 客户端。读取类工具只会构造读操作；`$out` 和 `$merge`（任意嵌套层级，包括 `$facet`、`$lookup`、`$unionWith` 子管道）、`$changeStream`、服务端 JavaScript（`$where`、`$function`、`$accumulator`、代码值）以及含有凭据的集合（`system.users` 及 2.6/3.0 认证升级留下的副本、`system.keys`、`external_validation_keys`、oplog）都会被拒绝。
 - 限制：每次调用默认返回 200 条、最多 1,000 条文档，结果约 256 KB（被截断时返回 `truncated: true`）；每次调用默认限时 30 秒、最长 120 秒（服务端 `maxTimeMS` 加客户端超时）。在客户端取消请求会终止查询。
 - 只有 *Read & write* 连接才提供写入工具。`update_many` 和 `delete_many` 会先计数，匹配文档超过 `max_documents`（默认 100，最多 10,000）时不做任何修改；`dry_run` 只返回计数。这个上限用来防止误操作，不具备事务性。写入 `system.*` 集合以及 `local`、`config` 数据库会被拒绝。
 - 密码和 SSH 密钥始终保存在钥匙串中，既不会出现在命令行参数里，也不会返回给客户端。MCP 服务器与 App 是同一个已签名的可执行文件，因此读取钥匙串时不会额外弹出授权提示（App 更新后 macOS 可能会询问一次，选择“始终允许”即可）。

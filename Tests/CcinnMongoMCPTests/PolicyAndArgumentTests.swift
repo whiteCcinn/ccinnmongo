@@ -37,6 +37,8 @@ struct MCPQueryPolicyTests {
         "[{ $unionWith: \"system.users\" }]",
         "[{ $unionWith: { coll: \"oplog.rs\" } }]",
         "[{ $lookup: { from: { db: \"admin\", coll: \"system.users\" }, pipeline: [], as: \"u\" } }]",
+        "[{ $lookup: { from: \"system.backup_users\", localField: \"a\", foreignField: \"b\", as: \"u\" } }]",
+        "[{ $unionWith: { coll: \"external_validation_keys\" } }]",
     ])
     func rejectsUnsafePipelines(text: String) throws {
         let stages = try pipeline(text)
@@ -63,7 +65,8 @@ struct MCPQueryPolicyTests {
     }
 
     @Test func rejectsCredentialCollections() {
-        for collection in ["system.users", "system.keys", "oplog.rs", "oplog.$main"] {
+        for collection in ["system.users", "system.keys", "oplog.rs", "oplog.$main", "system.backup_users", "system.new_users",
+                           "external_validation_keys"] {
             #expect(throws: MCPToolFailure.self, "\(collection)") {
                 try MCPQueryPolicy.checkReadableNamespace(database: collection.hasPrefix("oplog") ? "local" : "admin", collection: collection)
             }

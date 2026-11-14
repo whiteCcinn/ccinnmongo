@@ -105,11 +105,18 @@ public struct ProfileSessionOpener: MCPSessionOpening {
     public func open(_ profile: ConnectionProfile) async throws -> OpenedSession {
         // Keychain reads can block (or prompt), so they run off the concurrency pool.
         let repository = self.repository
-        let (uri, sshSecret, secrets) = try await Self.offPool { () throws -> (ConnectionString, String?, [String]) in
-            let uri = try repository.connectionString(for: profile)
-            let sshSecret = profile.ssh != nil ? repository.sshSecret(for: profile) : nil
-            let secrets = [uri.password, uri.tlsCertificateKeyFilePassword, sshSecret].compactMap { $0 }
-            return (uri, sshSecret, secrets)
+        let (uri, sshSecret, secrets): (ConnectionString, String?, [String])
+        do {
+            (uri, sshSecret, secrets) = try await Self.offPool { () throws -> (ConnectionString, String?, [String]) in
+                let uri = try repository.connectionString(for: profile)
+                let sshSecret = profile.ssh != nil ? repository.sshSecret(for: profile) : nil
+                let secrets = [uri.password, uri.tlsCertificateKeyFilePassword, sshSecret].compactMap { $0 }
+                return (uri, sshSecret, secrets)
+            }
+        } catch {
+            // Parser messages quote parts of the URI, which in a hand-edited profile may include a password.
+            throw MongoError(.invalidConnectionString,
+                             "The saved connection string of \"\(MCPProfileSelector.safeName(profile))\" is invalid; fix it in CcinnMongo")
         }
         do {
             let opened = try await ConnectionOpener.open(uri: uri, ssh: profile.ssh, sshSecret: sshSecret, allowLegacyTLS: profile.allowLegacyTLS)

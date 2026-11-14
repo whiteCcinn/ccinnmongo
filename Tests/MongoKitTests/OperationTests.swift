@@ -170,3 +170,22 @@ struct OperationTests {
         await client.close()
     }
 }
+
+@Suite("Explain time limits")
+struct ExplainTimeLimitTests {
+    /// The server applies maxTimeMS from the top level of a command, so explain must carry it there too.
+    @Test func explainCommandCarriesMaxTimeMSAtTheTopLevel() async throws {
+        let database = OperationTests.seededDatabase()
+        let (client, server) = try OperationTests.client(wireVersion: 25, database: database)
+        _ = try await client.explainFind(OperationTests.namespace, options: FindOptions(filter: ["kind": "odd"], maxTimeMS: 1234))
+        _ = try? await client.explainAggregate(OperationTests.namespace, pipeline: [["$match": [:]]], options: AggregateOptions(maxTimeMS: 4321))
+        let explains = server.requests.compactMap { request -> BSONDocument? in
+            guard case let .command(_, body, _, _) = request, body.elements.first?.key == "explain" else { return nil }
+            return body
+        }
+        #expect(explains.count == 2)
+        #expect(explains.first?["maxTimeMS"] == .int32(1234))
+        #expect(explains.last?["maxTimeMS"] == .int32(4321))
+        await client.close()
+    }
+}

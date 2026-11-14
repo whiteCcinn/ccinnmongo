@@ -64,6 +64,24 @@ struct StandardStreamsTests {
         #expect(received == payload)
     }
 
+    @Test func nonBlockingInputWaitsInsteadOfEnding() async throws {
+        var descriptors: [Int32] = [0, 0]
+        #expect(pipe(&descriptors) == 0)
+        let readEnd = descriptors[0]
+        let writeEnd = descriptors[1]
+        _ = fcntl(readEnd, F_SETFL, fcntl(readEnd, F_GETFL) | O_NONBLOCK)
+        let writer = Thread {
+            usleep(200_000)
+            _ = "late\n".withCString { write(writeEnd, $0, 5) }
+            close(writeEnd)
+        }
+        writer.start()
+        var received: [UInt8] = []
+        for await chunk in StandardInput.chunks(fileDescriptor: readEnd) { received.append(contentsOf: chunk) }
+        close(readEnd)
+        #expect(String(decoding: received, as: UTF8.self) == "late\n")
+    }
+
     @Test func writerAppendsNewlinesAndReportsBrokenPipes() async throws {
         var descriptors: [Int32] = [0, 0]
         #expect(pipe(&descriptors) == 0)

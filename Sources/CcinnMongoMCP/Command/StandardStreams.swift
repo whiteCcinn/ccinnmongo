@@ -34,6 +34,12 @@ public enum StandardInput {
                             return
                         }
                         if count < 0, errno == EINTR { continue }
+                        if count < 0, errno == EAGAIN {
+                            // A non-blocking descriptor inherited from the parent: wait for data instead of ending.
+                            var descriptor = pollfd(fd: fileDescriptor, events: Int16(POLLIN), revents: 0)
+                            _ = poll(&descriptor, 1, -1)
+                            continue
+                        }
                         continuation.resume(returning: nil)
                         return
                     }

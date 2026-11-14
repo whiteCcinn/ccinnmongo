@@ -101,7 +101,10 @@ struct ExplainCommandStrategy: ExplainFindStrategy {
     func explain(_ namespace: MongoNamespace, options: FindOptions, on connection: MongoConnection) async throws -> BSONDocument {
         var find = FindCommandStrategy.command(namespace, options)
         find["batchSize"] = nil
-        return try await connection.runCommand(["explain": .document(find), "verbosity": "executionStats"], database: namespace.database)
+        var command: BSONDocument = ["explain": .document(find), "verbosity": "executionStats"]
+        // The server applies maxTimeMS from the top level of a command; inside `explain` it would not bound the plan run.
+        if let maxTimeMS = options.maxTimeMS, maxTimeMS > 0 { command["maxTimeMS"] = .int(maxTimeMS) }
+        return try await connection.runCommand(command, database: namespace.database)
     }
 }
 

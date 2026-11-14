@@ -447,6 +447,28 @@ struct MongoToolsTests {
         #expect(ContinuousClock.now - started < .seconds(5))
     }
 
+    @Test func repeatedTimeoutsEvictTheSession() async throws {
+        let client = FakeMongoClient()
+        client.hangs = true
+        let harness = Self.harness(client: client)
+        _ = try await call(harness, "count_documents", #"{"database":"shop","collection":"orders","timeout_ms":50}"#)
+        #expect(harness.sessions.evicted.isEmpty)
+        _ = try await call(harness, "count_documents", #"{"database":"shop","collection":"orders","timeout_ms":50}"#)
+        #expect(harness.sessions.evicted == [Self.readOnly.id])
+    }
+
+    @Test func aSuccessResetsTheTimeoutStreak() async throws {
+        let client = FakeMongoClient()
+        client.hangs = true
+        let harness = Self.harness(client: client)
+        _ = try await call(harness, "count_documents", #"{"database":"shop","collection":"orders","timeout_ms":50}"#)
+        client.hangs = false
+        _ = try await call(harness, "count_documents", #"{"database":"shop","collection":"orders"}"#)
+        client.hangs = true
+        _ = try await call(harness, "count_documents", #"{"database":"shop","collection":"orders","timeout_ms":50}"#)
+        #expect(harness.sessions.evicted.isEmpty)
+    }
+
     @Test func cancellationPropagates() async throws {
         let client = FakeMongoClient()
         client.hangs = true

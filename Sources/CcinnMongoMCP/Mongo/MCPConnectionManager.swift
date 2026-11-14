@@ -46,7 +46,18 @@ public actor MCPConnectionManager: MCPSessionSource {
             if let stale = entries.removeValue(forKey: profile.id) { Self.closeInBackground(stale) }
             nextToken &+= 1
             let opener = self.opener
-            entry = Entry(token: nextToken, fingerprint: fingerprint, task: Task { try await opener.open(profile) })
+            let token = nextToken
+            // A failed opening removes itself, even when every waiter already left (e.g. after a deadline),
+            // so a later call reconnects instead of receiving the stale error.
+            let task = Task {
+                do {
+                    return try await opener.open(profile)
+                } catch {
+                    await self.discardFailedOpening(profile.id, token: token)
+                    throw error
+                }
+            }
+            entry = Entry(token: token, fingerprint: fingerprint, task: task)
             entries[profile.id] = entry
         }
         do {
@@ -59,6 +70,10 @@ public actor MCPConnectionManager: MCPSessionSource {
             }
             throw error
         }
+    }
+
+    private func discardFailedOpening(_ profileID: UUID, token: UInt64) {
+        if entries[profileID]?.token == token { entries.removeValue(forKey: profileID) }
     }
 
     public func evict(_ profileID: UUID, sessionID: UInt64) {

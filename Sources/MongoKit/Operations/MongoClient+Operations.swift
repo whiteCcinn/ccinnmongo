@@ -248,7 +248,9 @@ extension MongoClient {
         try await withConnection(retryable: true) { connection, capabilities in
             var aggregate = Self.aggregateCommand(namespace, pipeline, options)
             if capabilities.hasAggregateExplainCommand {
-                return try await connection.runCommand(["explain": .document(aggregate), "verbosity": "executionStats"], database: namespace.database)
+                var command: BSONDocument = ["explain": .document(aggregate), "verbosity": "executionStats"]
+                if let maxTimeMS = options.maxTimeMS, maxTimeMS > 0 { command["maxTimeMS"] = .int(maxTimeMS) }
+                return try await connection.runCommand(command, database: namespace.database)
             }
             aggregate["cursor"] = nil
             aggregate["explain"] = true

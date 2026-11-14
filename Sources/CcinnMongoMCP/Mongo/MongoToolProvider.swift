@@ -40,6 +40,9 @@ public final class MongoToolProvider: MCPToolProvider {
     }
 
     private let configuration: Configuration
+    /// Consecutive client-side deadline expiries per profile; a session that keeps hanging is dropped.
+    private let timeoutStreaks = OSAllocatedUnfairLock<[UUID: Int]>(initialState: [:])
+    static let timeoutsBeforeEviction = 2
     private let profiles: any MCPProfileSource
     private let sessions: any MCPSessionSource
     private let audit: any MCPAuditSink
@@ -150,12 +153,26 @@ public final class MongoToolProvider: MCPToolProvider {
     private func execute(_ prepared: Prepared, on selected: SelectedProfile) async throws -> Outcome {
         let sessions = self.sessions
         let usedSession = OSAllocatedUnfairLock<UInt64?>(initialState: nil)
+        let profileID = selected.profile.id
         do {
-            return try await MCPDeadline.run(milliseconds: prepared.timeoutMS + configuration.deadlineGraceMilliseconds) {
+            let outcome = try await MCPDeadline.run(milliseconds: prepared.timeoutMS + configuration.deadlineGraceMilliseconds) {
                 let session = try await sessions.session(for: selected.profile)
                 usedSession.withLock { $0 = session.id }
                 return try await prepared.run(session, selected)
             }
+            timeoutStreaks.withLock { $0[profileID] = nil }
+            return outcome
+        } catch is MCPDeadline.Expired {
+            // One slow query is normal; repeated expiries usually mean a half-open socket or SSH tunnel.
+            let streak = timeoutStreaks.withLock { streaks -> Int in
+                streaks[profileID, default: 0] += 1
+                return streaks[profileID, default: 0]
+            }
+            if streak >= Self.timeoutsBeforeEviction, let id = usedSession.withLock({ $0 }) {
+                timeoutStreaks.withLock { $0[profileID] = nil }
+                await sessions.evict(profileID, sessionID: id)
+            }
+            throw MCPDeadline.Expired()
         } catch let error as MongoError where Self.isConnectionFailure(error) {
             if let id = usedSession.withLock({ $0 }) {
                 await sessions.evict(selected.profile.id, sessionID: id)

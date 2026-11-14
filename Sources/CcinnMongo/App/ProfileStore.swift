@@ -54,11 +54,7 @@ final class ProfileStore {
     }
 
     func duplicate(_ profile: ConnectionProfile) -> ConnectionProfile? {
-        var copy = profile
-        copy.id = UUID()
-        copy.name = profile.displayName + " copy"
-        copy.lastConnectedAt = nil
-        copy.createdAt = Date()
+        let copy = profile.duplicated()
         let uri = (try? repository.connectionString(for: profile).description) ?? profile.uri
         return try? save(copy, uri: uri, sshSecret: repository.sshSecret(for: profile))
     }
