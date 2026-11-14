@@ -69,7 +69,7 @@ public actor MongoConnection {
     static func clientMetadata(appName: String?) -> BSONDocument {
         var metadata: BSONDocument = [:]
         if let appName, !appName.isEmpty { metadata["application"] = ["name": .string(String(appName.prefix(128)))] }
-        metadata["driver"] = ["name": "CcinnMongo", "version": "1.0.0"]
+        metadata["driver"] = ["name": "CcinnMongo", "version": "1.1.0"]
         #if arch(arm64)
         let architecture = "arm64"
         #else

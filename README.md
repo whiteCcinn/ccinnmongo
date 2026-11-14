@@ -45,7 +45,8 @@ CcinnMongo ships its **own pure-Swift MongoDB stack** — BSON codec, wire proto
 - **Explain plan** — summary metrics and a visual stage tree for classic, slot-based (SBE) and legacy 2.6 explain formats.
 - **Server tools** — server overview, live performance charts and a command console.
 - **AI assistant** *(optional)* — ask questions in plain language using your locally installed **Claude Code** or **Codex CLI**; see [AI assistant](#ai-assistant).
-- **Secure by default** — passwords are stored in the macOS Keychain; nothing is collected or sent anywhere unless you use the AI assistant.
+- **MCP server for AI clients** *(optional)* — let Claude Code, Claude Desktop, Codex and other MCP clients query the connections you enable, read-only by default; see [MCP server / AI access](#mcp-server--ai-access).
+- **Secure by default** — passwords are stored in the macOS Keychain; nothing is collected or sent anywhere unless you use the AI assistant or enable MCP access.
 
 ## Compatibility
 
@@ -109,6 +110,70 @@ Prompts include the server version, so generated queries only use operators your
 
 Configure the provider, model and executable path in **Settings → AI**.
 
+## MCP server / AI access
+
+CcinnMongo includes a [Model Context Protocol](https://modelcontextprotocol.io) server, so AI clients such as **Claude Code**, **Claude Desktop**, **Codex** or Cursor can list your connections, inspect databases and run queries through the connections you saved in CcinnMongo — on every server from MongoDB 2.6 to 8.x, including connections through SSH tunnels. The server is the app's own executable started with the `mcp` subcommand; the app does not need to be open.
+
+1. **Enable access per connection.** Edit a connection → **AI Access** → *Read-only* or *Read & write*, or use **Settings → MCP**. Every connection starts *Disabled*.
+2. **Register the server with your AI client.** **Settings → MCP** shows these snippets with the exact path of your copy of the app, with copy buttons:
+
+   **Claude Code** (add `--scope user` to use it in every project):
+
+   ```bash
+   claude mcp add ccinnmongo -- "/Applications/CcinnMongo.app/Contents/MacOS/CcinnMongo" mcp
+   ```
+
+   **Codex** (`~/.codex/config.toml`):
+
+   ```toml
+   [mcp_servers.ccinnmongo]
+   command = "/Applications/CcinnMongo.app/Contents/MacOS/CcinnMongo"
+   args = ["mcp"]
+   ```
+
+   **Claude Desktop** (`claude_desktop_config.json`) and other JSON-configured clients:
+
+   ```json
+   {
+     "mcpServers": {
+       "ccinnmongo": {
+         "command": "/Applications/CcinnMongo.app/Contents/MacOS/CcinnMongo",
+         "args": ["mcp"]
+       }
+     }
+   }
+   ```
+
+Command-line options: `CcinnMongo mcp [--profile <name|id>] [--read-only]`. `--profile` chooses the connection for calls that do not name one, and `--read-only` caps every connection at read-only access.
+
+| Tool | What it does |
+|---|---|
+| `list_connections` | Connections enabled for AI access: name, id, hosts, access level, replica set, TLS, SSH. Never credentials. |
+| `server_info` | Server version, wire protocol, topology, and the operators and stages this server version does not support. |
+| `list_databases` | Databases with their size on disk. |
+| `list_collections` | Collections and views of a database. |
+| `collection_schema` | Field paths, BSON types, presence and sample values inferred from a random sample (up to 1,000 documents). |
+| `list_indexes` | Index keys, options and usage counts. |
+| `find` | Documents matching a filter, with projection, sort, skip and limit. |
+| `aggregate` | Results of a read-only aggregation pipeline. |
+| `count_documents` | Number of documents matching a filter. |
+| `explain` | Execution-stats plan summary (indexes, collection scans, in-memory sorts, documents and keys examined) for a find or a pipeline. |
+| `insert_one` \* | Inserts one document. |
+| `update_many` \* | Applies update operators to the matching documents, bounded by `max_documents`, with `dry_run`. |
+| `delete_many` \* | Deletes the matching documents, bounded by `max_documents`, with `dry_run`. |
+
+\* Only offered when a connection has *Read & write* access and the server was not started with `--read-only`.
+
+Filters, projections, sorts and pipelines accept Extended JSON objects (`{"_id": {"$oid": "…"}}`) or mongo-shell strings (`"{ total: { $gt: 100 } }"`). Documents come back as relaxed Extended JSON.
+
+**Safety model.**
+- AI access is off for every connection until you enable it, and `--read-only` caps all connections.
+- CcinnMongo enforces read-only access itself, before anything reaches the server, instead of trusting the AI client. Read tools only build reads; `$out` and `$merge` (at any depth, including `$facet`, `$lookup` and `$unionWith` sub-pipelines), `$changeStream`, server-side JavaScript (`$where`, `$function`, `$accumulator`, code values) and credential-bearing collections (`system.users`, `system.keys`, the oplog) are refused.
+- Limits: 200 documents by default and at most 1,000 per call, about 256 KB of results (`truncated: true` when cut), and 30 seconds per call by default, at most 120 (server-side `maxTimeMS` plus a client-side deadline). Cancelling a request in the client stops the query.
+- Writes exist only for *Read & write* connections. `update_many` and `delete_many` count first and change nothing when more than `max_documents` documents match (default 100, at most 10,000); `dry_run` only reports the count. This bound guards against mistakes; it is not transactional. Writes to `system.*` collections and the `local` and `config` databases are refused.
+- Passwords and SSH secrets stay in the Keychain. They are never passed on the command line and never returned to the client. The MCP server is the same signed executable as the app, so it can read them without extra prompts (after an app update macOS may ask once; choose *Always Allow*).
+- Every tool call is appended to `~/Library/Application Support/CcinnMongo/mcp-audit.jsonl` with the time, connection, tool, a summary of the operation, its duration, the number of documents and any error. Secrets are never logged.
+
 ## Building from source
 
 Requirements: macOS 14+, Xcode 16 or later (Swift 6).
@@ -119,7 +184,7 @@ cd ccinnmongo
 swift build                       # debug build
 swift test                        # unit tests
 scripts/build-app.sh --open       # build dist/CcinnMongo.app and launch it
-scripts/package-release.sh 1.0.0  # universal .app, .zip, .dmg and checksums in dist/
+scripts/package-release.sh 1.1.0  # universal .app, .zip, .dmg and checksums in dist/
 ```
 
 You can also open `Package.swift` in Xcode and run the `CcinnMongo` scheme.
@@ -130,14 +195,18 @@ Docker is required. The script starts MongoDB 2.6, 3.0, 3.2, 3.4, 3.6, 4.0 and 8
 
 ```bash
 eval "$(scripts/it-up.sh)"        # exports CCINNMONGO_IT_URIS
+swift build                       # the MCP test launches .build/debug/CcinnMongo
 swift test --filter IntegrationTests
 scripts/it-down.sh
 ```
 
+The MCP integration test starts `CcinnMongo mcp` as a subprocess and drives a full stdio session against each server. It uses two **test-only** environment variables, which are not meant for normal use: `CCINNMONGO_PROFILE_DIR=<absolute path>` uses another data folder (profiles, history and audit log), and `CCINNMONGO_TEST_DISABLE_KEYCHAIN=1` replaces the Keychain with an empty in-memory store.
+
 ## Architecture
 
 ```
-CcinnMongo (SwiftUI app)
+CcinnMongo (SwiftUI app, and the headless `mcp` subcommand)
+ ├─ CcinnMongoMCP   MCP server on top of CcinnMongoKit: JSON-RPC over stdio, tools, read-only policy, limits, audit log
  └─ CcinnMongoKit   profiles & Keychain, query input, export/import, schema, explain, AI assistant
      └─ MongoKit    transport (Network.framework, TLS, SSH), auth, pooling, topology, version-aware operations
          └─ MongoWire   OP_MSG / OP_QUERY / OP_REPLY / OP_GET_MORE / OP_KILL_CURSORS

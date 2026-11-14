@@ -23,6 +23,18 @@ swift test --filter IntegrationTests
 scripts/it-down.sh
 ```
 
+The MCP integration test launches `.build/debug/CcinnMongo mcp`, so run `swift build` first. It points the server at a temporary data folder with the test-only variables `CCINNMONGO_PROFILE_DIR` and `CCINNMONGO_TEST_DISABLE_KEYCHAIN=1`.
+
+### Trying the MCP server
+
+```bash
+swift build
+.build/debug/CcinnMongo mcp --help
+claude mcp add ccinnmongo-dev -- "$PWD/.build/debug/CcinnMongo" mcp
+```
+
+A debug build has a different code signature from the app that saved your Keychain items, so macOS asks once before it can read them.
+
 `scripts/seed-demo.js` loads a small demo dataset (`shop.orders`, `shop.customers`, `shop.products`) that is handy for manual testing.
 
 ### Running the app against a server directly
@@ -41,6 +53,7 @@ dist/CcinnMongo.app/Contents/MacOS/CcinnMongo \
 | `MongoWire` | Wire-protocol messages and framing (no I/O) |
 | `MongoKit` | Transport, authentication, pooling, topology, SSH tunnels, version-aware operations |
 | `CcinnMongoKit` | UI-independent app logic: profiles, query input, export/import, schema, explain, AI assistant |
+| `CcinnMongoMCP` | MCP server: JSON-RPC over stdio, MongoDB tools, read-only policy, limits, audit log (no UI) |
 | `CcinnMongo` | SwiftUI/AppKit application |
 
 Dependencies only point downwards; lower modules must not import higher ones.

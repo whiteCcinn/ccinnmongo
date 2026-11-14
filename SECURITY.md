@@ -6,7 +6,8 @@ Security fixes are released for the latest minor version of CcinnMongo.
 
 | Version | Supported |
 |---|---|
-| 1.0.x | ✅ |
+| 1.1.x | ✅ |
+| 1.0.x | ❌ |
 
 ## Reporting a vulnerability
 
@@ -24,4 +25,5 @@ You can expect an acknowledgement within a few days. Once a fix is available, we
 
 - Passwords and SSH secrets are stored in the macOS Keychain; saved profiles on disk never contain them.
 - The optional AI assistant never receives connection strings, host names or credentials. Queries requested by the agent are executed by CcinnMongo under a read-only policy. Issues that let an agent bypass this policy are considered security vulnerabilities.
+- The MCP server (`CcinnMongo mcp`) only uses connections the user enabled for AI access and enforces read-only access itself. Any way for an MCP client to write through a read-only connection, run server-side JavaScript, read credential collections, exceed the documented limits, or obtain passwords or SSH secrets is a security vulnerability.
 - SSH tunnels use the system `/usr/bin/ssh` with `StrictHostKeyChecking=accept-new`: changed host keys are rejected.

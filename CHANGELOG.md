@@ -5,6 +5,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-14
+
+### Added
+
+- **MCP server for AI clients.** `CcinnMongo.app/Contents/MacOS/CcinnMongo mcp [--profile <name|id>] [--read-only]` runs a headless Model Context Protocol server over stdio, so Claude Code, Claude Desktop, Codex and other MCP clients can use your saved connections on every server from MongoDB 2.6 to 8.x, including SSH tunnels.
+- MCP tools: `list_connections`, `server_info`, `list_databases`, `list_collections`, `collection_schema`, `list_indexes`, `find`, `aggregate`, `count_documents` and `explain`; for connections with read & write access also `insert_one`, `update_many` and `delete_many`, bounded by `max_documents` and with dry runs.
+- Per-connection **AI access via MCP** (Disabled / Read-only / Read & write, disabled by default) in the connection editor and in the new **Settings → MCP** pane, which also shows copy-ready setup for Claude Code, Codex and Claude Desktop.
+- Read-only enforcement by CcinnMongo itself (no `$out`/`$merge`, `$changeStream`, server-side JavaScript or credential collections), result limits (200 documents by default, at most 1,000 and about 256 KB per call), per-call time limits (30 s by default, at most 120 s), cancellation, and an audit log in `mcp-audit.jsonl`.
+- `--settings <general|ai|mcp>` and `--editor-section <name>` launch arguments for automated screenshots.
+
+### Fixed
+
+- Editing a saved connection no longer resets its last-connected time, so it stays in Recents.
+
 ## [1.0.0] - 2026-11-14
 
 First public release.
@@ -21,5 +35,6 @@ First public release.
 - Server overview, live performance charts and a command console.
 - Optional AI assistant powered by locally installed Claude Code or Codex CLI: natural-language query and pipeline generation, plus interactive read-only Q&A over the data.
 
-[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/whiteCcinn/ccinnmongo/releases/tag/v1.0.0

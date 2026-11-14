@@ -45,7 +45,8 @@ CcinnMongo 内置了**纯 Swift 实现的 MongoDB 协议栈**（BSON 编解码�
 - **执行计划** —— 指标汇总与可视化的阶段树，兼容经典引擎、SBE 引擎以及 2.6 的旧版格式。
 - **服务器工具** —— 服务器概览、实时性能图表、命令控制台。
 - **AI 助手**（可选）—— 用自然语言提问，借助本机已安装的 **Claude Code** 或 **Codex CLI**，详见 [AI 助手](#ai-助手)。
-- **默认安全** —— 密码保存在 macOS 钥匙串中。除非你使用 AI 助手，否则不会收集或发送任何数据。
+- **面向 AI 客户端的 MCP 服务器**（可选）—— 让 Claude Code、Claude Desktop、Codex 等 MCP 客户端查询你授权的连接，默认只读，详见 [MCP 服务器 / AI 接入](#mcp-服务器--ai-接入)。
+- **默认安全** —— 密码保存在 macOS 钥匙串中。除非你使用 AI 助手或开启 MCP 访问，否则不会收集或发送任何数据。
 
 ## 兼容性
 
@@ -109,6 +110,70 @@ CcinnMongo 可以调用你本机已安装并登录的 **Claude Code**（`claude`
 
 可在 **Settings → AI** 中配置提供方、模型和可执行文件路径。
 
+## MCP 服务器 / AI 接入
+
+CcinnMongo 内置 [Model Context Protocol](https://modelcontextprotocol.io)（MCP）服务器，**Claude Code**、**Claude Desktop**、**Codex**、Cursor 等 AI 客户端可以通过你在 CcinnMongo 中保存的连接列出连接、查看数据库并执行查询。它支持 MongoDB 2.6 到 8.x 的所有服务器，也支持经由 SSH 隧道的连接。MCP 服务器就是 App 自身的可执行文件，以 `mcp` 子命令启动，无需打开 App。
+
+1. **按连接开启访问。** 编辑连接 → **AI Access**，选择 *Read-only*（只读）或 *Read & write*（读写），也可以在 **Settings → MCP** 中设置。所有连接默认都是 *Disabled*（关闭）。
+2. **在 AI 客户端中注册服务器。** **Settings → MCP** 会按你本机 App 的实际路径生成下面这些配置，并提供复制按钮：
+
+   **Claude Code**（加上 `--scope user` 可在所有项目中使用）：
+
+   ```bash
+   claude mcp add ccinnmongo -- "/Applications/CcinnMongo.app/Contents/MacOS/CcinnMongo" mcp
+   ```
+
+   **Codex**（`~/.codex/config.toml`）：
+
+   ```toml
+   [mcp_servers.ccinnmongo]
+   command = "/Applications/CcinnMongo.app/Contents/MacOS/CcinnMongo"
+   args = ["mcp"]
+   ```
+
+   **Claude Desktop**（`claude_desktop_config.json`）以及其他使用 JSON 配置的客户端：
+
+   ```json
+   {
+     "mcpServers": {
+       "ccinnmongo": {
+         "command": "/Applications/CcinnMongo.app/Contents/MacOS/CcinnMongo",
+         "args": ["mcp"]
+       }
+     }
+   }
+   ```
+
+命令行参数：`CcinnMongo mcp [--profile <名称|id>] [--read-only]`。`--profile` 指定调用未写明连接时使用的连接；`--read-only` 把所有连接都限制为只读。
+
+| 工具 | 作用 |
+|---|---|
+| `list_connections` | 已开启 AI 访问的连接：名称、id、主机、访问级别、副本集、TLS、SSH。从不返回凭据。 |
+| `server_info` | 服务器版本、通信协议、拓扑，以及该版本不支持的操作符和阶段。 |
+| `list_databases` | 数据库及其磁盘占用。 |
+| `list_collections` | 数据库中的集合和视图。 |
+| `collection_schema` | 基于随机采样（最多 1,000 条文档）推断的字段路径、BSON 类型、出现率和示例值。 |
+| `list_indexes` | 索引的键、选项和使用次数。 |
+| `find` | 按过滤条件查询文档，支持投影、排序、skip 和 limit。 |
+| `aggregate` | 执行只读聚合管道并返回结果。 |
+| `count_documents` | 统计匹配的文档数。 |
+| `explain` | 查询或聚合管道的执行计划摘要（使用的索引、全表扫描、内存排序、扫描的文档数和键数）。 |
+| `insert_one` \* | 插入一条文档。 |
+| `update_many` \* | 用更新操作符修改匹配的文档，受 `max_documents` 限制，支持 `dry_run`。 |
+| `delete_many` \* | 删除匹配的文档，受 `max_documents` 限制，支持 `dry_run`。 |
+
+\* 仅当某个连接为 *Read & write* 且服务器未使用 `--read-only` 启动时才会提供。
+
+过滤、投影、排序和聚合管道既可以写成 Extended JSON 对象（`{"_id": {"$oid": "…"}}`），也可以写成 mongo shell 语法字符串（`"{ total: { $gt: 100 } }"`）。文档以 relaxed Extended JSON 返回。
+
+**安全模型：**
+- 所有连接默认关闭 AI 访问，需要逐个开启；`--read-only` 会把所有连接限制为只读。
+- 只读限制由 CcinnMongo 自己在请求到达服务器之前执行，而不是依赖 AI 客户端。读取类工具只会构造读操作；`$out` 和 `$merge`（任意嵌套层级，包括 `$facet`、`$lookup`、`$unionWith` 子管道）、`$changeStream`、服务端 JavaScript（`$where`、`$function`、`$accumulator`、代码值）以及含有凭据的集合（`system.users`、`system.keys`、oplog）都会被拒绝。
+- 限制：每次调用默认返回 200 条、最多 1,000 条文档，结果约 256 KB（被截断时返回 `truncated: true`）；每次调用默认限时 30 秒、最长 120 秒（服务端 `maxTimeMS` 加客户端超时）。在客户端取消请求会终止查询。
+- 只有 *Read & write* 连接才提供写入工具。`update_many` 和 `delete_many` 会先计数，匹配文档超过 `max_documents`（默认 100，最多 10,000）时不做任何修改；`dry_run` 只返回计数。这个上限用来防止误操作，不具备事务性。写入 `system.*` 集合以及 `local`、`config` 数据库会被拒绝。
+- 密码和 SSH 密钥始终保存在钥匙串中，既不会出现在命令行参数里，也不会返回给客户端。MCP 服务器与 App 是同一个已签名的可执行文件，因此读取钥匙串时不会额外弹出授权提示（App 更新后 macOS 可能会询问一次，选择“始终允许”即可）。
+- 每次工具调用都会追加到 `~/Library/Application Support/CcinnMongo/mcp-audit.jsonl`，记录时间、连接、工具、操作摘要、耗时、文档数和错误，从不记录任何密钥。
+
 ## 从源码构建
 
 环境要求：macOS 14+，Xcode 16 或更高版本（Swift 6）。
@@ -119,7 +184,7 @@ cd ccinnmongo
 swift build                       # Debug 构建
 swift test                        # 单元测试
 scripts/build-app.sh --open       # 构建 dist/CcinnMongo.app 并启动
-scripts/package-release.sh 1.0.0  # 在 dist/ 中生成通用二进制 .app、.zip、.dmg 和校验和
+scripts/package-release.sh 1.1.0  # 在 dist/ 中生成通用二进制 .app、.zip、.dmg 和校验和
 ```
 
 也可以直接用 Xcode 打开 `Package.swift`，运行 `CcinnMongo` scheme。
@@ -130,14 +195,18 @@ scripts/package-release.sh 1.0.0  # 在 dist/ 中生成通用二进制 .app、.z
 
 ```bash
 eval "$(scripts/it-up.sh)"        # 导出 CCINNMONGO_IT_URIS
+swift build                       # MCP 测试会启动 .build/debug/CcinnMongo
 swift test --filter IntegrationTests
 scripts/it-down.sh
 ```
 
+MCP 集成测试会以子进程方式启动 `CcinnMongo mcp`，并针对每个服务器完成一整轮 stdio 会话。测试用到两个**仅供测试**的环境变量，日常使用请勿设置：`CCINNMONGO_PROFILE_DIR=<绝对路径>` 改用另一个数据目录（连接配置、查询历史和审计日志），`CCINNMONGO_TEST_DISABLE_KEYCHAIN=1` 用一个空的内存存储代替钥匙串。
+
 ## 架构
 
 ```
-CcinnMongo（SwiftUI 应用）
+CcinnMongo（SwiftUI 应用，以及无界面的 `mcp` 子命令）
+ ├─ CcinnMongoMCP   基于 CcinnMongoKit 的 MCP 服务器：stdio 上的 JSON-RPC、工具、只读策略、限额、审计日志
  └─ CcinnMongoKit   连接配置与钥匙串、查询输入、导入导出、Schema、执行计划、AI 助手
      └─ MongoKit    传输层（Network.framework、TLS、SSH）、认证、连接池、拓扑、按版本适配的操作
          └─ MongoWire   OP_MSG / OP_QUERY / OP_REPLY / OP_GET_MORE / OP_KILL_CURSORS
