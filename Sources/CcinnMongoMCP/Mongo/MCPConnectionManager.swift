@@ -67,6 +67,13 @@ public actor MCPConnectionManager: MCPSessionSource {
         Self.closeInBackground(entry)
     }
 
+    public func prune(keeping profileIDs: Set<UUID>) {
+        for (id, entry) in entries where !profileIDs.contains(id) {
+            entries.removeValue(forKey: id)
+            Self.closeInBackground(entry)
+        }
+    }
+
     /// Convenience for tests and shutdown paths that do not track session ids.
     public func evict(_ profileID: UUID) {
         guard let entry = entries.removeValue(forKey: profileID) else { return }

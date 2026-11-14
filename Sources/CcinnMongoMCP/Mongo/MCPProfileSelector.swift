@@ -11,6 +11,13 @@ public struct SelectedProfile: Sendable, Equatable {
 public enum MCPProfileSelector {
     static let enableHint = "Enable it in CcinnMongo: edit the connection → AI Access, or Settings → MCP."
 
+    /// The profile's name, or its host list when unnamed. Unlike `displayName` this never falls back to
+    /// the raw connection string (which could carry an inline password in a hand-edited profile file).
+    public static func safeName(_ profile: ConnectionProfile) -> String {
+        let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? MongoToolProvider.hosts(of: profile) : name
+    }
+
     public static func effectiveAccess(_ profile: ConnectionProfile, cap: MCPAccessLevel) -> MCPAccessLevel {
         profile.mcpAccess.capped(at: cap)
     }
@@ -23,7 +30,7 @@ public enum MCPProfileSelector {
     public static func select(requested: String?, defaultProfile: String?, profiles: [ConnectionProfile],
                               cap: MCPAccessLevel) -> Result<SelectedProfile, MCPToolFailure> {
         let enabled = enabledProfiles(profiles, cap: cap)
-        let names = enabled.map(\.displayName).joined(separator: ", ")
+        let names = enabled.map(safeName).joined(separator: ", ")
         let reference = [requested, defaultProfile]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
@@ -42,15 +49,15 @@ public enum MCPProfileSelector {
         let matches = match(reference, in: profiles)
         guard let profile = matches.first else {
             let available = enabled.isEmpty ? "No connections are enabled for AI access." : "Enabled connections: \(names)."
-            return .failure(MCPToolFailure("No connection named \"\(reference)\". \(available)"))
+            return .failure(MCPToolFailure("No connection named \"\(reference.clipped(100))\". \(available)"))
         }
         guard matches.count == 1 else {
             let ids = matches.map { $0.id.uuidString }.joined(separator: ", ")
-            return .failure(MCPToolFailure("Several connections are named \"\(reference)\"; pass one of these ids as \"connection\": \(ids)."))
+            return .failure(MCPToolFailure("Several connections are named \"\(reference.clipped(100))\"; pass one of these ids as \"connection\": \(ids)."))
         }
         let access = effectiveAccess(profile, cap: cap)
         guard access.allowsReads else {
-            return .failure(MCPToolFailure("Connection \"\(profile.displayName)\" is not enabled for AI access. \(enableHint)"))
+            return .failure(MCPToolFailure("Connection \"\(safeName(profile))\" is not enabled for AI access. \(enableHint)"))
         }
         return .success(SelectedProfile(profile: profile, access: access))
     }
@@ -60,8 +67,8 @@ public enum MCPProfileSelector {
         if let id = UUID(uuidString: reference), let profile = profiles.first(where: { $0.id == id }) {
             return [profile]
         }
-        let exact = profiles.filter { $0.displayName == reference }
+        let exact = profiles.filter { safeName($0) == reference }
         if !exact.isEmpty { return exact }
-        return profiles.filter { $0.displayName.caseInsensitiveCompare(reference) == .orderedSame }
+        return profiles.filter { safeName($0).caseInsensitiveCompare(reference) == .orderedSame }
     }
 }

@@ -16,10 +16,13 @@ public struct ExtendedJSONRenderer: Sendable {
     public var maxStringLength: Int?
     public var maxBinaryBytes: Int?
     public var maxArrayElements: Int?
+    public var maxDocumentFields: Int?
     public var maxDepth: Int
 
-    public static let full = ExtendedJSONRenderer(maxStringLength: nil, maxBinaryBytes: nil, maxArrayElements: nil, maxDepth: BSONLimits.maximumDepth + 2)
-    public static let compact = ExtendedJSONRenderer(maxStringLength: 1000, maxBinaryBytes: 256, maxArrayElements: 50, maxDepth: 12)
+    public static let full = ExtendedJSONRenderer(maxStringLength: nil, maxBinaryBytes: nil, maxArrayElements: nil, maxDocumentFields: nil,
+                                                  maxDepth: BSONLimits.maximumDepth + 2)
+    public static let compact = ExtendedJSONRenderer(maxStringLength: 1000, maxBinaryBytes: 256, maxArrayElements: 50, maxDocumentFields: 200,
+                                                     maxDepth: 12)
 
     public func render(_ document: BSONDocument) -> Rendered {
         var shortened = false
@@ -39,9 +42,14 @@ public struct ExtendedJSONRenderer: Sendable {
             return "{…}"
         }
         var members: [JSONMember] = []
-        members.reserveCapacity(document.count)
-        for element in document.elements {
+        let shown = maxDocumentFields.map { min($0, document.count) } ?? document.count
+        members.reserveCapacity(shown + 1)
+        for element in document.elements.prefix(shown) {
             members.append(JSONMember(key: element.key, value: renderValue(element.value, depth: depth + 1, shortened: &shortened)))
+        }
+        if shown < document.count {
+            shortened = true
+            members.append(JSONMember(key: "…", value: .string("\(document.count - shown) more fields")))
         }
         return .object(JSONObject(members))
     }
@@ -124,6 +132,62 @@ public struct ExtendedJSONRenderer: Sendable {
         shortened = true
         return String(text.prefix(maxStringLength)) + "… [\(text.count - maxStringLength) more characters]"
     }
+}
+
+/// Collects streamed documents until `limit` documents are rendered or the byte budget is full, so a
+/// query never holds more than one server batch beyond what is returned.
+final class StreamingDocumentBatch: @unchecked Sendable {
+    /// Thrown from the batch callback to stop reading (closes the server cursor).
+    struct Stop: Error {}
+
+    private let lock = NSLock()
+    private let limit: Int
+    private let maxBytes: Int
+    private var documents: [JSONValue] = []
+    private var used = 0
+    private var truncated = false
+    private var sawMore = false
+
+    init(limit: Int, maxBytes: Int) {
+        self.limit = max(1, limit)
+        self.maxBytes = maxBytes
+    }
+
+    /// Adds a batch; throws `Stop` once nothing more is needed.
+    func add(_ batch: [BSONDocument]) throws {
+        let done = lock.withLock { () -> Bool in
+            for document in batch {
+                guard documents.count < limit else {
+                    sawMore = true
+                    return true
+                }
+                let full = ExtendedJSONRenderer.full.render(document).value
+                let fullSize = JSONWriter.encodedSize(full) + 1
+                if used + fullSize <= maxBytes {
+                    documents.append(full)
+                    used += fullSize
+                    continue
+                }
+                truncated = true
+                let compact = ExtendedJSONRenderer.compact.render(document).value
+                let compactSize = JSONWriter.encodedSize(compact) + 1
+                guard used + compactSize <= maxBytes else {
+                    sawMore = true
+                    return true
+                }
+                documents.append(compact)
+                used += compactSize
+            }
+            return false
+        }
+        if done { throw Stop() }
+    }
+
+    var result: (documents: [JSONValue], truncated: Bool, hasMore: Bool) {
+        lock.withLock { (documents, truncated, sawMore) }
+    }
+
+    var count: Int { lock.withLock { documents.count } }
 }
 
 /// Documents rendered within a byte budget (measured on their compact JSON encoding).

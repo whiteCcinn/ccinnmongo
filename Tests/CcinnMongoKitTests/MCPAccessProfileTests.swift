@@ -107,3 +107,20 @@ struct DataDirectoryTests {
         #expect(AppDataLocation.secretStore(environment: ["CCINNMONGO_TEST_DISABLE_KEYCHAIN": "1"]) is InMemorySecretStore)
     }
 }
+
+@Suite("Editor and Settings access merging")
+struct MCPAccessMergeTests {
+    @Test func untouchedEditorKeepsTheStoredLevel() {
+        // Opened as read-only, disabled meanwhile in Settings, editor saved without touching AI access.
+        #expect(MCPAccessLevel.merge(edited: .readOnly, original: .readOnly, stored: .disabled) == .disabled)
+    }
+
+    @Test func editorChangeWins() {
+        #expect(MCPAccessLevel.merge(edited: .readWrite, original: .readOnly, stored: .disabled) == .readWrite)
+    }
+
+    @Test func newProfilesUseTheEditorValue() {
+        #expect(MCPAccessLevel.merge(edited: .readOnly, original: .disabled, stored: nil) == .readOnly)
+        #expect(MCPAccessLevel.merge(edited: .disabled, original: .disabled, stored: nil) == .disabled)
+    }
+}

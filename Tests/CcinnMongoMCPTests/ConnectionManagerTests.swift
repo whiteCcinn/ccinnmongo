@@ -108,6 +108,19 @@ struct ConnectionManagerTests {
         await manager.closeAll()
     }
 
+    @Test func pruneClosesSessionsOfProfilesNoLongerEnabled() async throws {
+        let opener = FakeOpener()
+        let manager = MCPConnectionManager(opener: opener)
+        let other = ConnectionProfile(name: "B", uri: "mongodb://b:27017/", mcpAccess: .readOnly)
+        _ = try await manager.session(for: profile)
+        _ = try await manager.session(for: other)
+        await manager.prune(keeping: [other.id])
+        try await waitUntil { opener.closes == 1 }
+        _ = try await manager.session(for: other)
+        #expect(opener.opens == 2)
+        await manager.closeAll()
+    }
+
     @Test func closedManagerRefusesNewSessions() async throws {
         let manager = MCPConnectionManager(opener: FakeOpener())
         await manager.closeAll()
@@ -133,6 +146,28 @@ struct ProfileFileSourceTests {
 
 @Suite("Audit log")
 struct AuditLogTests {
+    @Test func concurrentWritersFromSeveralProcessesNeverClobberLines() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ccinnmongo-mcp-audit-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Two independent logs model two MCP processes appending to the same file.
+        let first = MCPAuditLog(directory: directory, maxBytes: 50 * 1024 * 1024)
+        let second = MCPAuditLog(directory: directory, maxBytes: 50 * 1024 * 1024)
+        await withTaskGroup(of: Void.self) { group in
+            for (log, name) in [(first, "first"), (second, "second")] {
+                group.addTask {
+                    for index in 0..<300 {
+                        await log.record(MCPAuditRecord(date: Date(), connection: name, connectionID: nil, tool: "find",
+                                                        operation: "op \(index) " + String(repeating: "x", count: 300),
+                                                        durationMilliseconds: 1, documents: 1, error: nil))
+                    }
+                }
+            }
+        }
+        let lines = try String(contentsOf: directory.appendingPathComponent("mcp-audit.jsonl"), encoding: .utf8).split(separator: "\n")
+        #expect(lines.count == 600)
+        for line in lines { #expect(throws: Never.self) { try JSONParser.parse(String(line)) } }
+    }
+
     @Test func appendsJSONLinesAndRotates() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ccinnmongo-mcp-audit-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

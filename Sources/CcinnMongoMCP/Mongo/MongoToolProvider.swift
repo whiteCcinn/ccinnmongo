@@ -91,20 +91,22 @@ public final class MongoToolProvider: MCPToolProvider {
             if spec.kind == .connections {
                 let outcome = try listConnections()
                 await record(name, summary: summary, selected: nil, started: started, documents: outcome.documents, error: nil)
-                return .success(outcome.result)
+                return Self.guardSize(.success(outcome.result), maxBytes: configuration.maxResultBytes)
             }
             let prepared = try prepare(spec, args)
             summary = prepared.summary
-            let chosen = try selectProfile(try args.optionalString("connection"))
+            let chosen = try await selectProfile(try args.optionalString("connection"))
             selected = chosen
             if spec.kind == .write, !chosen.access.allowsWrites {
                 throw MCPToolFailure(configuration.readOnly
                     ? "The MCP server was started with --read-only, so \(name) is not available."
-                    : "Connection \"\(chosen.profile.displayName)\" has read-only AI access; \(name) needs read & write access (change it in CcinnMongo: edit the connection → AI Access).")
+                    : "Connection \"\(MCPProfileSelector.safeName(chosen.profile))\" has read-only AI access; \(name) needs read & write access (change it in CcinnMongo: edit the connection → AI Access).")
             }
             let outcome = try await execute(prepared, on: chosen)
-            await record(name, summary: summary, selected: chosen, started: started, documents: outcome.documents, error: nil)
-            return .success(outcome.result)
+            let result = Self.guardSize(.success(outcome.result), maxBytes: configuration.maxResultBytes)
+            await record(name, summary: summary, selected: chosen, started: started, documents: outcome.documents,
+                         error: result.isError ? "result too large" : nil)
+            return result
         } catch let error as MCPToolError {
             await record(name, summary: summary, selected: selected, started: started, documents: nil, error: error.message)
             throw error
@@ -115,7 +117,8 @@ public final class MongoToolProvider: MCPToolProvider {
             }
             let timeout = (try? ToolArguments(tool: name, values: arguments).integer("timeout_ms", default: MongoToolCatalog.defaultTimeoutMS,
                                                                                     range: 1...MongoToolCatalog.maxTimeoutMS)) ?? MongoToolCatalog.defaultTimeoutMS
-            let message = Self.describe(error, connection: selected?.profile.displayName, timeoutMS: timeout)
+            let message = Self.describe(error, connection: selected.map { MCPProfileSelector.safeName($0.profile) }, timeoutMS: timeout,
+                                        isWrite: spec.kind == .write)
             await record(name, summary: summary, selected: selected, started: started, documents: nil, error: message)
             return .failure(message)
         }
@@ -123,15 +126,25 @@ public final class MongoToolProvider: MCPToolProvider {
 
     // MARK: Execution
 
-    private func selectProfile(_ requested: String?) throws -> SelectedProfile {
+    private func selectProfile(_ requested: String?) async throws -> SelectedProfile {
         let loaded: [ConnectionProfile]
         do {
             loaded = try profiles.loadProfiles()
         } catch {
             throw MCPToolFailure("Could not read the saved CcinnMongo connections: \(error.localizedDescription)")
         }
+        // Pooled sessions of deleted or disabled profiles are closed (with their SSH tunnels).
+        await sessions.prune(keeping: Set(MCPProfileSelector.enabledProfiles(loaded, cap: configuration.cap).map(\.id)))
         return try MCPProfileSelector.select(requested: requested, defaultProfile: configuration.defaultProfile,
                                              profiles: loaded, cap: configuration.cap).get()
+    }
+
+    /// The final guard on result size: anything far beyond the budget becomes an error instead of flooding the client.
+    static func guardSize(_ result: MCPToolResult, maxBytes: Int) -> MCPToolResult {
+        guard case let .structured(object) = result.payload else { return result }
+        let size = JSONWriter.encodedSize(.object(object))
+        guard size > maxBytes + maxBytes / 2 else { return result }
+        return .failure("The result is too large (\(size / 1024) KB, limit about \(maxBytes / 1024) KB). Narrow the request, use a projection or lower the limit.")
     }
 
     private func execute(_ prepared: Prepared, on selected: SelectedProfile) async throws -> Outcome {
@@ -158,12 +171,15 @@ public final class MongoToolProvider: MCPToolProvider {
         }
     }
 
-    static func describe(_ error: any Error, connection: String?, timeoutMS: Int) -> String {
+    static func describe(_ error: any Error, connection: String?, timeoutMS: Int, isWrite: Bool) -> String {
         let name = connection.map { "\"\($0)\"" } ?? "the connection"
         switch error {
         case let failure as MCPToolFailure:
             return failure.message
         case is MCPDeadline.Expired:
+            if isWrite {
+                return "The write did not finish within \(timeoutMS) ms and was abandoned; it may still complete on the server. Check the data before retrying."
+            }
             return "The operation did not finish within \(timeoutMS) ms and was abandoned. Narrow the query or raise timeout_ms (max \(MongoToolCatalog.maxTimeoutMS))."
         case let mongo as MongoError:
             if mongo.code == MongoError.maxTimeMSExpiredCode || mongo.codeName == "MaxTimeMSExpired" {
@@ -171,7 +187,9 @@ public final class MongoToolProvider: MCPToolProvider {
             }
             switch mongo.kind {
             case .authentication:
-                return "Authentication failed for connection \(name): \(mongo.message)"
+                // Never echo details derived from the password (e.g. the code point SASLprep rejected).
+                let detail = mongo.message.contains("SASLprep") ? "the stored password contains characters SASLprep does not allow" : mongo.message
+                return "Authentication failed for connection \(name): \(detail)"
             case .network, .timeout, .tls, .dns, .sshTunnel, .serverSelection, .connectionClosed:
                 return "Could not reach connection \(name): \(mongo.message)"
             default:
@@ -187,7 +205,7 @@ public final class MongoToolProvider: MCPToolProvider {
                         documents: Int?, error: String?) async {
         let elapsed = ContinuousClock.now - started
         let milliseconds = Int(elapsed.components.seconds) * 1000 + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
-        await audit.record(MCPAuditRecord(date: Date(), connection: selected?.profile.displayName, connectionID: selected?.profile.id,
+        await audit.record(MCPAuditRecord(date: Date(), connection: selected.map { MCPProfileSelector.safeName($0.profile) }, connectionID: selected?.profile.id,
                                           tool: tool, operation: summary, durationMilliseconds: milliseconds, documents: documents, error: error))
     }
 
@@ -206,7 +224,7 @@ public final class MongoToolProvider: MCPToolProvider {
         let connections: [JSONValue] = enabled.map { profile in
             let access = MCPProfileSelector.effectiveAccess(profile, cap: configuration.cap)
             var object: JSONObject = [
-                "name": .string(profile.displayName),
+                "name": .string(MCPProfileSelector.safeName(profile)),
                 "id": .string(profile.id.uuidString),
                 "hosts": .string(Self.hosts(of: profile)),
                 "access": .string(access.allowsWrites ? "read-write" : "read-only"),
@@ -267,19 +285,24 @@ extension MongoToolProvider {
         switch spec.name {
         case "server_info":
             return Prepared(summary: "server_info", timeoutMS: timeoutMS) { session, selected in
-                Outcome(result: Self.serverInfo(session.server, connection: selected.profile.displayName), documents: nil)
+                Outcome(result: Self.serverInfo(session.server, connection: MCPProfileSelector.safeName(selected.profile)), documents: nil)
             }
 
         case "list_databases":
             return Prepared(summary: "list_databases", timeoutMS: timeoutMS) { session, _ in
                 let databases = try await session.client.listDatabases()
-                let items: [JSONValue] = databases.map { database in
+                let items: [JSONValue] = databases.prefix(Self.maxListedItems).map { database in
                     var object: JSONObject = ["name": .string(database.name)]
                     if let size = database.sizeOnDisk { object["size_on_disk"] = .int(size) }
                     if let empty = database.isEmpty { object["empty"] = .bool(empty) }
                     return .object(object)
                 }
-                return Outcome(result: ["databases": .array(items)], documents: items.count)
+                var result: JSONObject = ["databases": .array(items)]
+                if databases.count > items.count {
+                    result["truncated"] = true
+                    result["total"] = .int(databases.count)
+                }
+                return Outcome(result: result, documents: items.count)
             }
 
         case "list_collections":
@@ -288,28 +311,41 @@ extension MongoToolProvider {
             return Prepared(summary: "list_collections \(database)", timeoutMS: timeoutMS) { session, _ in
                 let collections = try await session.client.listCollections(database: database)
                     .filter { includeSystem || !$0.isSystem }
-                let items: [JSONValue] = collections.map { info in
+                let items: [JSONValue] = collections.prefix(Self.maxListedItems).map { info in
                     var object: JSONObject = ["name": .string(info.name), "type": .string(info.kind.rawValue)]
                     if info.isCapped { object["capped"] = true }
                     if let viewOn = info.viewOn { object["view_on"] = .string(viewOn) }
                     if info.isReadOnly { object["read_only"] = true }
                     return .object(object)
                 }
-                return Outcome(result: ["database": .string(database), "collections": .array(items)], documents: items.count)
+                var result: JSONObject = ["database": .string(database), "collections": .array(items)]
+                if collections.count > items.count {
+                    result["truncated"] = true
+                    result["total"] = .int(collections.count)
+                }
+                return Outcome(result: result, documents: items.count)
             }
 
         case "collection_schema":
             let namespace = try readableNamespace(args)
             let sampleSize = try args.integer("sample_size", default: MongoToolCatalog.defaultSampleSize, range: 1...MongoToolCatalog.maxSampleSize)
             return Prepared(summary: "\(namespace) collection_schema sample_size=\(sampleSize)", timeoutMS: timeoutMS) { session, _ in
-                let documents: [BSONDocument]
-                if session.server.capabilities.hasSampleStage {
-                    documents = try await session.client.aggregate(namespace, pipeline: [["$sample": ["size": .int(sampleSize)]]],
-                                                                   options: AggregateOptions(maxTimeMS: timeoutMS, maxResults: sampleSize))
-                } else {
-                    documents = try await session.client.find(namespace, options: FindOptions(limit: sampleSize, maxTimeMS: timeoutMS))
+                let sample = SampleCollector(limit: sampleSize, maxBytes: Self.maxSampleBytes)
+                let batchSize = min(sampleSize, Self.streamBatchSize)
+                try await Self.readingWithRetry(delivered: { sample.count }) {
+                    if session.server.capabilities.hasSampleStage {
+                        try await session.client.forEachAggregateBatch(namespace, pipeline: [["$sample": ["size": .int(sampleSize)]]],
+                                                                       options: AggregateOptions(maxTimeMS: timeoutMS, maxResults: sampleSize),
+                                                                       batchSize: batchSize) { try sample.add($0) }
+                    } else {
+                        try await session.client.forEachBatch(namespace, options: FindOptions(limit: sampleSize, maxTimeMS: timeoutMS),
+                                                              batchSize: batchSize) { try sample.add($0) }
+                    }
                 }
-                return Outcome(result: Self.schema(SchemaAnalyzer.analyze(documents), namespace: namespace), documents: documents.count)
+                let (documents, truncated) = sample.result
+                var result = Self.schema(SchemaAnalyzer.analyze(documents), namespace: namespace)
+                if truncated { result["sample_truncated"] = true }
+                return Outcome(result: result, documents: documents.count)
             }
 
         case "list_indexes":
@@ -333,9 +369,12 @@ extension MongoToolProvider {
             let summary = "\(namespace) find filter=\(Self.shell(filter))" + (projection.map { " projection=\(Self.shell($0))" } ?? "")
                 + (sort.map { " sort=\(Self.shell($0))" } ?? "") + (skip > 0 ? " skip=\(skip)" : "") + " limit=\(limit)"
             return Prepared(summary: summary, timeoutMS: timeoutMS) { session, _ in
-                let documents = try await session.client.find(namespace, options: FindOptions(filter: filter, projection: projection, sort: sort, skip: skip,
-                                                                                               limit: limit + 1, maxTimeMS: timeoutMS))
-                return Self.documentsOutcome(documents, limit: limit, namespace: namespace, maxBytes: maxBytes)
+                let batch = StreamingDocumentBatch(limit: limit, maxBytes: maxBytes)
+                let options = FindOptions(filter: filter, projection: projection, sort: sort, skip: skip, limit: limit + 1, maxTimeMS: timeoutMS)
+                try await Self.readingWithRetry(delivered: { batch.count }) {
+                    try await session.client.forEachBatch(namespace, options: options, batchSize: min(limit + 1, Self.streamBatchSize)) { try batch.add($0) }
+                }
+                return Self.documentsOutcome(batch, namespace: namespace, maxBytes: maxBytes)
             }
 
         case "aggregate":
@@ -348,9 +387,13 @@ extension MongoToolProvider {
             return Prepared(summary: summary, timeoutMS: timeoutMS) { session, _ in
                 // A trailing $limit stops the server early; maxResults also stops reading client-side.
                 let bounded = pipeline + [["$limit": .int(limit + 1)]]
-                let documents = try await session.client.aggregate(namespace, pipeline: bounded,
-                                                                   options: AggregateOptions(allowDiskUse: allowDiskUse, maxTimeMS: timeoutMS, maxResults: limit + 1))
-                return Self.documentsOutcome(documents, limit: limit, namespace: namespace, maxBytes: maxBytes)
+                let batch = StreamingDocumentBatch(limit: limit, maxBytes: maxBytes)
+                let options = AggregateOptions(allowDiskUse: allowDiskUse, maxTimeMS: timeoutMS, maxResults: limit + 1)
+                try await Self.readingWithRetry(delivered: { batch.count }) {
+                    try await session.client.forEachAggregateBatch(namespace, pipeline: bounded, options: options,
+                                                                   batchSize: min(limit + 1, Self.streamBatchSize)) { try batch.add($0) }
+                }
+                return Self.documentsOutcome(batch, namespace: namespace, maxBytes: maxBytes)
             }
 
         case "count_documents":
@@ -472,19 +515,45 @@ extension MongoToolProvider {
 // MARK: - Result rendering
 
 extension MongoToolProvider {
-    static func documentsOutcome(_ documents: [BSONDocument], limit: Int, namespace: MongoNamespace, maxBytes: Int) -> Outcome {
-        let batch = DocumentBatch.render(Array(documents.prefix(limit)), maxBytes: maxBytes)
+    /// Documents fetched per server round trip; small enough that an abandoned batch costs little.
+    static let streamBatchSize = 100
+    /// Upper bound on BSON bytes kept in memory while sampling for `collection_schema`.
+    static let maxSampleBytes = 32 * 1024 * 1024
+    /// Entries returned by list_databases / list_collections.
+    static let maxListedItems = 1_000
+
+    /// Runs a streaming read, retrying once on a network or "not primary" error when nothing was delivered
+    /// yet (e.g. an idle pooled socket the server closed). Stopping early is not an error.
+    static func readingWithRetry(delivered: @Sendable () -> Int, _ read: @Sendable () async throws -> Void) async throws {
+        var attempt = 0
+        while true {
+            attempt += 1
+            do {
+                try await read()
+                return
+            } catch is StreamingDocumentBatch.Stop {
+                return
+            } catch is SampleCollector.Stop {
+                return
+            } catch let error as MongoError where (error.isNetworkError || error.isNotPrimary) && delivered() == 0 && attempt < 2 && !Task.isCancelled {
+                continue
+            }
+        }
+    }
+
+    static func documentsOutcome(_ batch: StreamingDocumentBatch, namespace: MongoNamespace, maxBytes: Int) -> Outcome {
+        let (documents, truncated, hasMore) = batch.result
         var result: JSONObject = [
             "namespace": .string(namespace.fullName),
-            "returned": .int(batch.documents.count),
-            "has_more": .bool(documents.count > batch.documents.count),
-            "truncated": .bool(batch.truncated),
+            "returned": .int(documents.count),
+            "has_more": .bool(hasMore),
+            "truncated": .bool(truncated),
         ]
-        if batch.truncated {
+        if truncated {
             result["note"] = .string("The result was cut to about \(maxBytes / 1024) KB; use a projection or a smaller limit to see the rest.")
         }
-        result["documents"] = .array(batch.documents)
-        return Outcome(result: result, documents: batch.documents.count)
+        result["documents"] = .array(documents)
+        return Outcome(result: result, documents: documents.count)
     }
 
     static func serverInfo(_ server: ServerDescription, connection: String) -> JSONObject {
@@ -583,8 +652,10 @@ extension MongoToolProvider {
 
     static func explain(_ raw: BSONDocument, kind: String, namespace: MongoNamespace, includeRaw: Bool) -> JSONObject {
         let plan = ExplainPlan(raw)
+        var indexes = plan.indexesUsed.prefix(50).map { JSONValue.string($0.clipped(200)) }
+        if plan.indexesUsed.count > 50 { indexes.append(.string("… \(plan.indexesUsed.count - 50) more indexes")) }
         var summary: JSONObject = [
-            "indexes_used": .array(plan.indexesUsed.map(JSONValue.string)),
+            "indexes_used": .array(indexes),
             "collection_scan": .bool(plan.usesCollectionScan),
             "in_memory_sort": .bool(plan.hasInMemorySort),
         ]
@@ -599,25 +670,93 @@ extension MongoToolProvider {
             "format": .string(plan.format.rawValue),
             "summary": .object(summary),
         ]
-        if let root = plan.root { result["plan"] = planNode(root, depth: 0) }
+        if let root = plan.root {
+            var budget = maxPlanNodes
+            result["plan"] = planNode(root, depth: 0, budget: &budget)
+        }
         if includeRaw {
             let full = ExtendedJSONRenderer.full.render(raw).value
-            result["raw"] = JSONWriter.encodedSize(full) <= 128 * 1024 ? full : ExtendedJSONRenderer.compact.render(raw).value
+            if JSONWriter.encodedSize(full) <= maxRawExplainBytes {
+                result["raw"] = full
+            } else {
+                let compact = ExtendedJSONRenderer.compact.render(raw).value
+                if JSONWriter.encodedSize(compact) <= maxRawExplainBytes {
+                    result["raw"] = compact
+                } else {
+                    result["raw_omitted"] = .string("The raw explain output is larger than \(maxRawExplainBytes / 1024) KB.")
+                }
+            }
         }
         return result
     }
 
-    static func planNode(_ node: PlanNode, depth: Int) -> JSONValue {
-        var object: JSONObject = ["stage": .string(node.stage)]
-        if let index = node.indexName { object["index"] = .string(index) }
-        if !node.details.isEmpty { object["details"] = .array(node.details.prefix(20).map(JSONValue.string)) }
+    static let maxPlanNodes = 200
+    static let maxRawExplainBytes = 96 * 1024
+
+    static func planNode(_ node: PlanNode, depth: Int, budget: inout Int) -> JSONValue {
+        budget -= 1
+        var object: JSONObject = ["stage": .string(node.stage.clipped(200))]
+        if let index = node.indexName { object["index"] = .string(index.clipped(200)) }
+        if !node.details.isEmpty { object["details"] = .array(node.details.prefix(20).map { .string($0.clipped(500)) }) }
         if let returned = node.documentsReturned { object["returned"] = .int(returned) }
         if let examined = node.documentsExamined { object["docs_examined"] = .int(examined) }
         if let keys = node.keysExamined { object["keys_examined"] = .int(keys) }
         if let millis = node.executionTimeMillis { object["time_ms"] = .int(millis) }
         if !node.children.isEmpty {
-            object["children"] = depth < 32 ? .array(node.children.map { planNode($0, depth: depth + 1) }) : "…"
+            var children: [JSONValue] = []
+            for child in node.children {
+                guard depth < 32, budget > 0 else {
+                    children.append(.string("… \(node.children.count - children.count) more stages"))
+                    break
+                }
+                children.append(planNode(child, depth: depth + 1, budget: &budget))
+            }
+            object["children"] = .array(children)
         }
         return .object(object)
+    }
+}
+
+/// Collects sampled documents up to a count and a total BSON size.
+final class SampleCollector: @unchecked Sendable {
+    struct Stop: Error {}
+
+    private let lock = NSLock()
+    private let limit: Int
+    private let maxBytes: Int
+    private var documents: [BSONDocument] = []
+    private var bytes = 0
+    private var truncated = false
+
+    init(limit: Int, maxBytes: Int) {
+        self.limit = max(1, limit)
+        self.maxBytes = maxBytes
+    }
+
+    func add(_ batch: [BSONDocument]) throws {
+        let done = lock.withLock { () -> Bool in
+            for document in batch {
+                guard documents.count < limit else { return true }
+                let size = document.encodedSize ?? maxBytes
+                guard bytes + size <= maxBytes || documents.isEmpty else {
+                    truncated = true
+                    return true
+                }
+                documents.append(document)
+                bytes += size
+            }
+            return false
+        }
+        if done { throw Stop() }
+    }
+
+    var count: Int { lock.withLock { documents.count } }
+    var result: (documents: [BSONDocument], truncated: Bool) { lock.withLock { (documents, truncated) } }
+}
+
+extension String {
+    /// At most `length` characters, with an ellipsis when shortened (for echoing client input).
+    func clipped(_ length: Int) -> String {
+        count > length ? String(prefix(length)) + "…" : self
     }
 }

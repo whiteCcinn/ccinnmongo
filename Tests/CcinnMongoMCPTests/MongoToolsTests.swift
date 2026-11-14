@@ -187,6 +187,116 @@ struct MongoToolsTests {
         #expect(JSONWriter.encodedSize(.object(object)) < 300 * 1024)
     }
 
+    @Test func findStreamsAndStopsReadingOnceTheBudgetIsFull() async throws {
+        let client = FakeMongoClient()
+        client.documents = (0..<1000).map { ["_id": .int32(Int32($0)), "pad": .string(String(repeating: "x", count: 100_000))] }
+        let harness = Self.harness(client: client)
+        let object = try #require(structured(try await call(harness, "find", #"{"database":"shop","collection":"orders","limit":1000}"#)))
+        #expect(object["truncated"] == true)
+        #expect(object["has_more"] == true)
+        // About 256 KB of 100 KB documents: the cursor is abandoned after a few batches instead of reading 1001 documents.
+        #expect((client.lastBatchSize ?? 0) <= 100)
+        #expect(client.batchesDelivered <= 2)
+        // Two documents fit whole; later ones are shortened (marked truncated) until the budget is full.
+        let returned = try #require(object["returned"]?.int64Value)
+        #expect(returned >= 2 && returned < 1000)
+        #expect(JSONWriter.encodedSize(.object(object)) <= 300 * 1024)
+    }
+
+    @Test func aggregateStreamsToo() async throws {
+        let client = FakeMongoClient()
+        client.documents = (0..<1000).map { ["n": .int32(Int32($0)), "pad": .string(String(repeating: "y", count: 100_000))] }
+        let harness = Self.harness(client: client)
+        let object = try #require(structured(try await call(harness, "aggregate", #"{"database":"shop","collection":"orders","pipeline":[{"$match":{}}],"limit":1000}"#)))
+        #expect(object["truncated"] == true)
+        #expect(client.batchesDelivered <= 2)
+    }
+
+    @Test func schemaSamplingIsByteBounded() async throws {
+        let client = FakeMongoClient()
+        client.documents = (0..<1000).map { ["n": .int32(Int32($0)), "pad": .string(String(repeating: "z", count: 1_000_000))] }
+        let harness = Self.harness(client: client)
+        let object = try #require(structured(try await call(harness, "collection_schema", #"{"database":"shop","collection":"orders","sample_size":1000}"#)))
+        let sampled = try #require(object["sampled"]?.int64Value)
+        #expect(sampled < 1000)
+        #expect(object["sample_truncated"] == true)
+    }
+
+    @Test func listingsAreCapped() async throws {
+        let client = FakeMongoClient()
+        client.collections = (0..<5000).map { CollectionInfo(name: "c\($0)") }
+        client.databases = (0..<3000).map { DatabaseInfo(name: "db\($0)") }
+        let harness = Self.harness(client: client)
+        let collections = try #require(structured(try await call(harness, "list_collections", #"{"database":"shop"}"#)))
+        #expect(collections["collections"]?.arrayValue?.count == 1000)
+        #expect(collections["total"] == 5000)
+        #expect(collections["truncated"] == true)
+        let databases = try #require(structured(try await call(harness, "list_databases")))
+        #expect(databases["databases"]?.arrayValue?.count == 1000)
+        #expect(databases["truncated"] == true)
+    }
+
+    @Test func explainOutputIsBounded() async throws {
+        let client = FakeMongoClient()
+        let branches: [BSONValue] = (0..<5000).map { index in
+            ["stage": "IXSCAN", "indexName": .string("idx_\(index)_" + String(repeating: "k", count: 200)), "keyPattern": ["a": 1]]
+        }
+        client.explainResult = ["queryPlanner": ["winningPlan": ["stage": "OR", "inputStages": .array(branches)]],
+                                "executionStats": ["nReturned": 1, "totalDocsExamined": 1, "totalKeysExamined": 1, "executionTimeMillis": 1]]
+        let harness = Self.harness(client: client)
+        let result = try await call(harness, "explain", #"{"database":"shop","collection":"orders","include_raw":true}"#)
+        let object = try #require(structured(result), "\(errorMessage(result) ?? "")")
+        #expect(JSONWriter.encodedSize(.object(object)) <= 300 * 1024)
+    }
+
+    @Test func echoedNamesAreBounded() async throws {
+        let harness = Self.harness()
+        let longName = String(repeating: "n", count: 10_000)
+        do {
+            _ = try await call(harness, "find", "{\"database\":\"shop\",\"collection\":\"o\",\"\(longName)\":1}")
+            Issue.record("expected an argument error")
+        } catch let error as MCPToolError {
+            #expect(error.message.count < 600)
+        }
+        let result = try await call(harness, "find", "{\"connection\":\"\(longName)\",\"database\":\"shop\",\"collection\":\"o\"}")
+        #expect((errorMessage(result)?.count ?? 0) < 600)
+    }
+
+    @Test func unnamedProfileWithUnparsableURINeverExposesTheURI() async throws {
+        let broken = ConnectionProfile(name: "", uri: "mongodb://user:hunter22@bad host:99999/", mcpAccess: .readOnly)
+        let harness = Self.harness(profiles: [broken])
+        let result = try await call(harness, "list_connections")
+        let text = JSONWriter.string(.object(try #require(structured(result))))
+        #expect(!text.contains("hunter22"))
+        let audit = await harness.audit.records
+        #expect(!audit.contains { ($0.connection ?? "").contains("hunter22") })
+    }
+
+    @Test func authenticationErrorsDoNotRevealPasswordCharacters() {
+        let message = MongoToolProvider.describe(MongoError(.authentication, "The password contains a character (U+00E9) that is not allowed by SASLprep"),
+                                                 connection: "Shop", timeoutMS: 1000, isWrite: false)
+        #expect(!message.contains("00E9"))
+        #expect(message.contains("Shop"))
+    }
+
+    @Test func timedOutWritesSayTheyMayHaveApplied() {
+        let message = MongoToolProvider.describe(MCPDeadline.Expired(), connection: "Shop", timeoutMS: 100, isWrite: true)
+        #expect(message.contains("may still"))
+    }
+
+    @Test func sessionsOfDisabledOrDeletedProfilesArePruned() async throws {
+        let harness = Self.harness(profiles: [Self.readOnly, Self.disabled])
+        _ = try await call(harness, "list_databases")
+        #expect(harness.sessions.kept == [Self.readOnly.id])
+    }
+
+    @Test func oversizedResultsBecomeErrors() {
+        var big = JSONObject()
+        big["blob"] = .string(String(repeating: "q", count: 2_000_000))
+        let guarded = MongoToolProvider.guardSize(.success(big), maxBytes: 256 * 1024)
+        #expect(guarded.isError)
+    }
+
     @Test func findRejectsUnsafeFiltersBeforeContactingTheServer() async throws {
         let harness = Self.harness()
         let result = try await call(harness, "find", #"{"database":"shop","collection":"orders","filter":{"$where":"sleep(1000) || true"}}"#)

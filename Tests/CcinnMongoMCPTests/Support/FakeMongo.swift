@@ -61,19 +61,37 @@ final class FakeMongoClient: MongoToolClient, @unchecked Sendable {
         ["_id_": IndexUsage(name: "_id_", operations: 7, since: nil)]
     }
 
-    func find(_ namespace: MongoNamespace, options: FindOptions) async throws -> [BSONDocument] {
-        lock.withLock { lastFindOptions = options }
-        try await record("find", namespace.fullName)
-        return options.limit > 0 ? Array(documents.prefix(options.limit)) : documents
+    private(set) var lastBatchSize: Int?
+    private var _batchesDelivered = 0
+    var batchesDelivered: Int { lock.withLock { _batchesDelivered } }
+
+    private func stream(_ limit: Int, batchSize: Int, _ body: @Sendable ([BSONDocument]) async throws -> Void) async throws {
+        lock.withLock { lastBatchSize = batchSize }
+        let selected = limit > 0 ? Array(documents.prefix(limit)) : documents
+        var start = 0
+        while start < selected.count {
+            let end = min(selected.count, start + max(1, batchSize))
+            lock.withLock { _batchesDelivered += 1 }
+            try await body(Array(selected[start..<end]))
+            start = end
+        }
     }
 
-    func aggregate(_ namespace: MongoNamespace, pipeline: [BSONDocument], options: AggregateOptions) async throws -> [BSONDocument] {
+    func forEachBatch(_ namespace: MongoNamespace, options: FindOptions, batchSize: Int,
+                      _ body: @Sendable ([BSONDocument]) async throws -> Void) async throws {
+        lock.withLock { lastFindOptions = options }
+        try await record("find", namespace.fullName)
+        try await stream(options.limit, batchSize: batchSize, body)
+    }
+
+    func forEachAggregateBatch(_ namespace: MongoNamespace, pipeline: [BSONDocument], options: AggregateOptions, batchSize: Int,
+                               _ body: @Sendable ([BSONDocument]) async throws -> Void) async throws {
         lock.withLock {
             lastPipeline = pipeline
             lastAggregateOptions = options
         }
         try await record("aggregate", namespace.fullName)
-        return options.maxResults > 0 ? Array(documents.prefix(options.maxResults)) : documents
+        try await stream(options.maxResults, batchSize: batchSize, body)
     }
 
     func count(_ namespace: MongoNamespace, filter: BSONDocument, options: CountOptions) async throws -> Int64? {
@@ -134,6 +152,13 @@ final class FakeSessions: MCPSessionSource, @unchecked Sendable {
 
     func evict(_ profileID: UUID, sessionID: UInt64) async {
         lock.withLock { _evicted.append(profileID) }
+    }
+
+    private var _kept: Set<UUID>?
+    var kept: Set<UUID>? { lock.withLock { _kept } }
+
+    func prune(keeping profileIDs: Set<UUID>) async {
+        lock.withLock { _kept = profileIDs }
     }
 }
 

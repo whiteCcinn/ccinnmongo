@@ -25,6 +25,8 @@ final class ConnectionDraft {
     var ssh: SSHTunnelConfiguration
     var sshSecret: String
     var mcpAccess: MCPAccessLevel
+    /// The access level when the editor opened, to tell an edit here from a change made in Settings → MCP.
+    private var originalMCPAccess: MCPAccessLevel
 
     /// Structured form; the source of truth.
     var form: ConnectionForm {
@@ -59,6 +61,7 @@ final class ConnectionDraft {
         ssh = profile?.ssh ?? SSHTunnelConfiguration(host: "", username: NSUserName(), authentication: .agent)
         sshSecret = profile.flatMap { store.sshSecret(for: $0) } ?? ""
         mcpAccess = profile?.mcpAccess ?? .disabled
+        originalMCPAccess = profile?.mcpAccess ?? .disabled
         if let profile, let uri = try? store.connectionString(for: profile) {
             form = ConnectionForm(uri)
         } else {
@@ -72,11 +75,19 @@ final class ConnectionDraft {
 
     var isValid: Bool { uriError == nil && !form.hosts.filter { !$0.host.isEmpty }.isEmpty }
 
-    func makeProfile() -> ConnectionProfile {
+    /// Re-bases the editor on what was just saved.
+    func didSave(_ profile: ConnectionProfile) {
+        mcpAccess = profile.mcpAccess
+        originalMCPAccess = profile.mcpAccess
+    }
+
+    /// - Parameter stored: the profile as currently saved (it may have changed since the editor opened).
+    func makeProfile(stored: ConnectionProfile?) -> ConnectionProfile {
+        let access = MCPAccessLevel.merge(edited: mcpAccess, original: originalMCPAccess, stored: stored?.mcpAccess)
         var profile = ConnectionProfile(id: profileID ?? UUID(), name: name.trimmingCharacters(in: .whitespaces), uri: form.uri.description,
                                         color: color, isFavorite: isFavorite, ssh: sshEnabled ? ssh : nil, allowLegacyTLS: allowLegacyTLS,
-                                        mcpAccess: mcpAccess)
-        if let original { profile.preserveHistory(from: original) }
+                                        mcpAccess: access)
+        if let original = stored ?? original { profile.preserveHistory(from: original) }
         return profile
     }
 

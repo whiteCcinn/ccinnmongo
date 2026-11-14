@@ -32,6 +32,13 @@ public enum MCPAccessLevel: String, CaseIterable, Identifiable, Sendable, Codabl
     /// The lower of `self` and `limit` (a cap never raises access).
     public func capped(at limit: MCPAccessLevel) -> MCPAccessLevel { min(self, limit) }
 
+    /// The level to save from an editor that loaded `original`: the editor's choice when the user changed it
+    /// there, otherwise the currently stored level (which Settings → MCP may have changed meanwhile), so an
+    /// unrelated edit can never silently re-enable access that was just turned off.
+    public static func merge(edited: MCPAccessLevel, original: MCPAccessLevel, stored: MCPAccessLevel?) -> MCPAccessLevel {
+        edited != original ? edited : (stored ?? edited)
+    }
+
     public var displayName: String {
         switch self {
         case .disabled: "Disabled"

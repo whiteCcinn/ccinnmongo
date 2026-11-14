@@ -22,7 +22,7 @@ public struct ToolArguments: Sendable {
 
     public func requireOnly(_ allowed: [String]) throws {
         if let unexpected = values.keys.first(where: { !allowed.contains($0) }) {
-            throw MCPToolError.invalidArguments("Unexpected argument \"\(unexpected)\" for \(tool). Allowed: \(allowed.joined(separator: ", "))")
+            throw MCPToolError.invalidArguments("Unexpected argument \"\(unexpected.clipped(100))\" for \(tool). Allowed: \(allowed.joined(separator: ", "))")
         }
     }
 

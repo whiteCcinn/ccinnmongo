@@ -177,6 +177,22 @@ extension MongoClient {
         }
     }
 
+    /// Streams aggregation results in batches, honouring `options.maxResults` (0 = all); the cursor is
+    /// closed when `body` throws, so callers can stop early without reading the rest.
+    public func forEachAggregateBatch(_ namespace: MongoNamespace, pipeline: [BSONDocument], options: AggregateOptions, batchSize: Int = 1000,
+                                      _ body: @Sendable ([BSONDocument]) async throws -> Void) async throws {
+        var options = options
+        options.batchSize = max(1, batchSize)
+        try await withConnection(retryable: false) { connection, capabilities in
+            try Self.check(collation: options.collation, capabilities: capabilities)
+            let strategies = OperationStrategies(capabilities: capabilities)
+            let reply = try await connection.runCommand(Self.aggregateCommand(namespace, pipeline, options), database: namespace.database)
+            let first = try CursorPage.parse(reply, fallbackNamespace: namespace.fullName)
+            try await CursorDrain.forEachBatch(first: first, limit: options.maxResults, batchSize: options.batchSize,
+                                               driver: strategies.cursorDriver, connection: connection, body)
+        }
+    }
+
     /// Random sample using `$sample` (MongoDB 3.2+) or the first documents on older servers.
     public func sample(_ namespace: MongoNamespace, size: Int) async throws -> [BSONDocument] {
         let capabilities = try await state.server(progress: nil).capabilities

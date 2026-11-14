@@ -95,7 +95,7 @@ public enum MCPToolError: Error, Sendable, Equatable {
 
     public var message: String {
         switch self {
-        case let .unknownTool(name): "Unknown tool: \(name)"
+        case let .unknownTool(name): "Unknown tool: \(name.count > 100 ? String(name.prefix(100)) + "…" : name)"
         case let .invalidArguments(message): message
         }
     }

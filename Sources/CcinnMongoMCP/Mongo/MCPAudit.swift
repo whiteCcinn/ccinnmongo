@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// One audited tool call. Contains no secrets: operations are summarised (filters, field names) and
@@ -82,24 +83,25 @@ public actor MCPAuditLog: MCPAuditSink {
         }
     }
 
+    /// Appends one line with a single `write(2)` on an `O_APPEND` descriptor, so lines from several MCP
+    /// processes (e.g. Claude Code and Codex) never overwrite or interleave with each other.
     private func append(_ data: Data) throws {
         let manager = FileManager.default
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = fileURL
-        if let size = (try? manager.attributesOfItem(atPath: url.path))?[.size] as? NSNumber,
+        let path = fileURL.path
+        if let size = (try? manager.attributesOfItem(atPath: path))?[.size] as? NSNumber,
            size.intValue + data.count > maxBytes {
-            let rotated = directory.appendingPathComponent(Self.rotatedFileName)
-            try? manager.removeItem(at: rotated)
-            try manager.moveItem(at: url, to: rotated)
+            // rename(2) is atomic; a concurrent writer simply continues in the rotated file or a new one.
+            let rotated = directory.appendingPathComponent(Self.rotatedFileName).path
+            _ = rename(path, rotated)
         }
-        if !manager.fileExists(atPath: url.path) {
-            guard manager.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
-                throw CocoaError(.fileWriteUnknown)
-            }
+        let descriptor = open(path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(descriptor) }
+        let written = data.withUnsafeBytes { raw -> Int in
+            guard let base = raw.baseAddress else { return 0 }
+            return write(descriptor, base, raw.count)
         }
-        let handle = try FileHandle(forWritingTo: url)
-        defer { try? handle.close() }
-        try handle.seekToEnd()
-        try handle.write(contentsOf: data)
+        guard written == data.count else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }
 }

@@ -56,8 +56,23 @@ public enum JSONWriter {
 
     static func writeString(_ string: String, into output: inout [UInt8]) {
         output.append(UInt8(ascii: "\""))
-        var utf8 = Array(string.utf8)[...]
-        while let byte = utf8.popFirst() {
+        let bytes = Array(string.utf8)
+        var runStart = 0
+        var index = 0
+        // Unescaped runs are copied in bulk; only bytes that need escaping are handled one by one.
+        while index < bytes.count {
+            let byte = bytes[index]
+            let escapeLength: Int
+            if byte == 0x22 || byte == 0x5C || byte < 0x20 {
+                escapeLength = 1
+            } else if byte == 0xE2, index + 2 < bytes.count, bytes[index + 1] == 0x80, bytes[index + 2] == 0xA8 || bytes[index + 2] == 0xA9 {
+                // U+2028/U+2029 are valid JSON but are line terminators for some line-oriented readers.
+                escapeLength = 3
+            } else {
+                index += 1
+                continue
+            }
+            output.append(contentsOf: bytes[runStart..<index])
             switch byte {
             case 0x22: output.append(contentsOf: [0x5C, 0x22])
             case 0x5C: output.append(contentsOf: [0x5C, 0x5C])
@@ -66,18 +81,13 @@ public enum JSONWriter {
             case 0x09: output.append(contentsOf: [0x5C, UInt8(ascii: "t")])
             case 0x08: output.append(contentsOf: [0x5C, UInt8(ascii: "b")])
             case 0x0C: output.append(contentsOf: [0x5C, UInt8(ascii: "f")])
-            case 0x00..<0x20:
-                appendUnicodeEscape(UInt16(byte), into: &output)
-            case 0xE2 where utf8.count >= 2 && utf8[utf8.startIndex] == 0x80
-                && (utf8[utf8.startIndex + 1] == 0xA8 || utf8[utf8.startIndex + 1] == 0xA9):
-                // U+2028/U+2029 are valid JSON but are line terminators for some line-oriented readers.
-                let low = utf8[utf8.startIndex + 1]
-                utf8 = utf8.dropFirst(2)
-                appendUnicodeEscape(low == 0xA8 ? 0x2028 : 0x2029, into: &output)
-            default:
-                output.append(byte)
+            case 0xE2: appendUnicodeEscape(bytes[index + 2] == 0xA8 ? 0x2028 : 0x2029, into: &output)
+            default: appendUnicodeEscape(UInt16(byte), into: &output)
             }
+            index += escapeLength
+            runStart = index
         }
+        output.append(contentsOf: bytes[runStart..<bytes.count])
         output.append(UInt8(ascii: "\""))
     }
 

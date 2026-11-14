@@ -10,8 +10,12 @@ public protocol MongoToolClient: Sendable {
     func listCollections(database: String) async throws -> [CollectionInfo]
     func listIndexes(_ namespace: MongoNamespace) async throws -> [IndexInfo]
     func indexUsage(_ namespace: MongoNamespace) async throws -> [String: IndexUsage]?
-    func find(_ namespace: MongoNamespace, options: FindOptions) async throws -> [BSONDocument]
-    func aggregate(_ namespace: MongoNamespace, pipeline: [BSONDocument], options: AggregateOptions) async throws -> [BSONDocument]
+    /// Streams find results; throwing from `body` closes the cursor.
+    func forEachBatch(_ namespace: MongoNamespace, options: FindOptions, batchSize: Int,
+                      _ body: @Sendable ([BSONDocument]) async throws -> Void) async throws
+    /// Streams aggregation results; throwing from `body` closes the cursor.
+    func forEachAggregateBatch(_ namespace: MongoNamespace, pipeline: [BSONDocument], options: AggregateOptions, batchSize: Int,
+                               _ body: @Sendable ([BSONDocument]) async throws -> Void) async throws
     func count(_ namespace: MongoNamespace, filter: BSONDocument, options: CountOptions) async throws -> Int64?
     func explainFind(_ namespace: MongoNamespace, options: FindOptions) async throws -> BSONDocument
     func explainAggregate(_ namespace: MongoNamespace, pipeline: [BSONDocument], options: AggregateOptions) async throws -> BSONDocument
@@ -86,6 +90,8 @@ public protocol MCPSessionSource: Sendable {
     func session(for profile: ConnectionProfile) async throws -> MongoSession
     /// Drops the pooled session after a connection-level failure (only if it is still `sessionID`).
     func evict(_ profileID: UUID, sessionID: UInt64) async
+    /// Closes pooled sessions (and SSH tunnels) of profiles that were deleted or lost AI access.
+    func prune(keeping profileIDs: Set<UUID>) async
 }
 
 /// Opens profiles exactly like the app does: Keychain secrets, optional SSH tunnel, version detection.

@@ -406,7 +406,9 @@ struct ConnectionEditorView: View {
 
     private func save() -> ConnectionProfile? {
         do {
-            let saved = try store.save(draft.makeProfile(), uri: draft.connectionString.description, sshSecret: draft.sshEnabled ? draft.sshSecret : nil)
+            let saved = try store.save(draft.makeProfile(stored: store.profile(id: draft.profileID)), uri: draft.connectionString.description,
+                                       sshSecret: draft.sshEnabled ? draft.sshSecret : nil)
+            draft.didSave(saved)
             saveError = nil
             onSaved(saved)
             return saved
