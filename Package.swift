@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "MongoWire", targets: ["MongoWire"]),
         .library(name: "MongoKit", targets: ["MongoKit"]),
         .library(name: "CcinnMongoKit", targets: ["CcinnMongoKit"]),
+        .library(name: "CcinnMongoMCP", targets: ["CcinnMongoMCP"]),
         .executable(name: "CcinnMongo", targets: ["CcinnMongo"]),
     ],
     targets: [
@@ -24,10 +25,12 @@ let package = Package(
         .target(name: "MongoKit", dependencies: ["BSON", "MongoWire"], swiftSettings: strictSettings),
         // UI-independent application logic (profiles, export, schema, explain, ...).
         .target(name: "CcinnMongoKit", dependencies: ["BSON", "MongoKit"], swiftSettings: strictSettings),
-        // SwiftUI application.
+        // Model Context Protocol server (stdio JSON-RPC) exposing saved connections to AI clients. No UI.
+        .target(name: "CcinnMongoMCP", dependencies: ["BSON", "MongoKit", "CcinnMongoKit"], swiftSettings: strictSettings),
+        // SwiftUI application (and the headless `mcp` subcommand).
         .executableTarget(
             name: "CcinnMongo",
-            dependencies: ["BSON", "MongoKit", "CcinnMongoKit"],
+            dependencies: ["BSON", "MongoKit", "CcinnMongoKit", "CcinnMongoMCP"],
             swiftSettings: strictSettings
         ),
 
@@ -35,7 +38,8 @@ let package = Package(
         .testTarget(name: "MongoWireTests", dependencies: ["BSON", "MongoWire"], swiftSettings: strictSettings),
         .testTarget(name: "MongoKitTests", dependencies: ["BSON", "MongoWire", "MongoKit"], swiftSettings: strictSettings),
         .testTarget(name: "CcinnMongoKitTests", dependencies: ["BSON", "MongoKit", "CcinnMongoKit"], exclude: ["Fixtures"], swiftSettings: strictSettings),
-        .testTarget(name: "IntegrationTests", dependencies: ["BSON", "MongoKit", "CcinnMongoKit"], swiftSettings: strictSettings),
+        .testTarget(name: "CcinnMongoMCPTests", dependencies: ["BSON", "MongoKit", "CcinnMongoKit", "CcinnMongoMCP"], swiftSettings: strictSettings),
+        .testTarget(name: "IntegrationTests", dependencies: ["BSON", "MongoKit", "CcinnMongoKit", "CcinnMongoMCP"], swiftSettings: strictSettings),
     ],
     swiftLanguageModes: [.v6]
 )
