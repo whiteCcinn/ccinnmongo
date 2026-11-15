@@ -18,19 +18,14 @@ struct CcinnMongoApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             AppCommands()
+            UpdateCommands()
         }
 
         Settings {
             SettingsRootView()
         }
 
-        Window("Software Update", id: SoftwareUpdateView.windowID) {
-            SoftwareUpdateView()
-                .preferredColorScheme(AppearancePreference(rawValue: appearance)?.colorScheme)
-                .tint(Theme.accent)
-        }
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
+        SoftwareUpdateScene()
     }
 }
 
@@ -84,9 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct RootView: View {
     @State private var session = WindowSession()
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
     private let store = AppServices.shared.profiles
-    private let updates = UpdateController.shared
 
     var body: some View {
         Group {
@@ -106,11 +99,10 @@ struct RootView: View {
         .focusedSceneValue(\.windowSession, session)
         .navigationTitle(windowTitle)
         .onDisappear { session.disconnect() }
-        .onChange(of: updates.windowRequest) { openWindow(id: SoftwareUpdateView.windowID) }
+        .presentsSoftwareUpdates()
         .task {
             LaunchArguments.consume(into: session)
             LaunchArguments.openSettingsOnce(openSettings)
-            LaunchArguments.checkForUpdatesOnce()
         }
     }
 
@@ -162,15 +154,6 @@ enum LaunchArguments {
         openSettings()
     }
 
-    private static var checkedForUpdates = false
-
-    /// `--check-updates` runs a manual update check and opens the Software Update window
-    /// (combine with `--pretend-version 1.0.0` to see the "available" state).
-    static func checkForUpdatesOnce() {
-        guard ProcessInfo.processInfo.arguments.contains("--check-updates"), !checkedForUpdates else { return }
-        checkedForUpdates = true
-        UpdateController.shared.checkForUpdates(automatic: false)
-    }
 
     static func consume(into session: WindowSession) {
         guard !consumed else { return }
@@ -275,10 +258,6 @@ struct SettingsView: View {
     @AppStorage("appearance") private var appearance = AppearancePreference.system.rawValue
     @AppStorage("defaultPageSize") private var pageSize = 20
     @AppStorage("defaultViewMode") private var viewMode = DocumentViewMode.list.rawValue
-    @AppStorage(UpdateController.automaticCheckKey) private var automaticallyCheck = true
-    @Environment(\.openWindow) private var openWindow
-    private let updates = UpdateController.shared
-
     var body: some View {
         Form {
             Section {
@@ -297,30 +276,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            Section("Updates") {
-                Toggle("Check for updates automatically", isOn: $automaticallyCheck)
-                LabeledContent("Last checked") {
-                    HStack(spacing: 10) {
-                        Text(updates.lastCheck?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                            .foregroundStyle(.secondary)
-                        Button("Check Now") {
-                            updates.reset()
-                            updates.checkForUpdates(automatic: false)
-                            openWindow(id: SoftwareUpdateView.windowID)
-                        }
-                    }
-                }
-            }
-            Section("About") {
-                LabeledContent("Version", value: AppInfo.version)
-                LabeledContent("Project") {
-                    HStack(spacing: 12) {
-                        Link("GitHub", destination: AppInfo.links.repository)
-                        Link("Release Notes", destination: AppInfo.links.releases)
-                        Link("Report an Issue", destination: AppInfo.links.newIssue)
-                    }
-                }
-            }
+            UpdateSettingsSections()
         }
         .formStyle(.grouped)
         .padding(.vertical, 8)
@@ -342,23 +298,8 @@ extension FocusedValues {
 
 struct AppCommands: Commands {
     @FocusedValue(\.windowSession) private var session
-    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
-        CommandGroup(replacing: .appInfo) {
-            Button("About CcinnMongo") { AboutPanel.show() }
-            Button("Check for Updates…") {
-                UpdateController.shared.reset()
-                UpdateController.shared.checkForUpdates(automatic: false)
-                openWindow(id: SoftwareUpdateView.windowID)
-            }
-        }
-        CommandGroup(replacing: .help) {
-            Button("CcinnMongo on GitHub") { NSWorkspace.shared.open(AppInfo.links.repository) }
-            Button("Release Notes") { NSWorkspace.shared.open(AppInfo.links.releases) }
-            Divider()
-            Button("Report an Issue…") { NSWorkspace.shared.open(AppInfo.links.newIssue) }
-        }
         CommandGroup(after: .newItem) {
             Button("Disconnect") { session?.disconnect() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])

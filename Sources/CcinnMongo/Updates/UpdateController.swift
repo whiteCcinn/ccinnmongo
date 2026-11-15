@@ -168,6 +168,16 @@ final class UpdateController {
             || ProcessInfo.processInfo.environment["\(AppInfo.productName.uppercased())_DISABLE_UPDATE_CHECK"] == "1"
     }
 
+    private var handledLaunchRequest = false
+
+    /// `--check-updates` runs one manual check at launch (combine with `--pretend-version 1.0.0` to see
+    /// the "available" state in snapshots).
+    func checkIfRequestedAtLaunch() {
+        guard !handledLaunchRequest, ProcessInfo.processInfo.arguments.contains("--check-updates") else { return }
+        handledLaunchRequest = true
+        checkForUpdates(automatic: false)
+    }
+
     private static func argument(_ flag: String) -> String? {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
