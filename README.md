@@ -84,6 +84,14 @@ Every release is tested against real MongoDB 2.6, 3.0, 3.2, 3.4, 3.6, 4.0 and 8.
 
 Each release lists SHA-256 checksums in `SHA256SUMS.txt`.
 
+### Updating
+
+Choose **CcinnMongo → Check for Updates…**. If a newer release exists, CcinnMongo shows what's new. **Download & Open** saves the disk image to your Downloads folder, checks it against the release's `SHA256SUMS.txt`, and opens it. Quit CcinnMongo, then drag the new version onto **Applications**.
+
+CcinnMongo also checks quietly once a day; turn this off in **Settings → General → Updates**. The check contacts only GitHub's public releases API, and you can **Skip This Version**.
+
+The project page, release notes and issue tracker are also in the **Help** menu and the About window.
+
 ## Quick start
 
 1. Click **New Connection**, paste a connection string such as `mongodb://user@db.example.com:27017/?authSource=admin`, or fill in the form (both stay in sync).

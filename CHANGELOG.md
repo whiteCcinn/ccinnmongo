@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Check for Updates…** in the app menu. When a newer release exists, CcinnMongo shows its version and release notes. **Download & Open** downloads the disk image, verifies its size and SHA-256 against the release's `SHA256SUMS.txt`, saves it to Downloads without overwriting anything, and opens it. **Release Page**, **Skip This Version** and **Later** are also available.
+- A quiet automatic check at most once a day, on by default, switchable in **Settings → General → Updates**.
+- Project links: the Help menu now has **CcinnMongo on GitHub**, **Release Notes** and **Report an Issue…**; the About window shows the GitHub link; Settings → General shows the version and project links.
+
+### Changed
+
+- Automated `--snapshot` launches no longer take focus from the active app.
+
 ## [1.1.0] - 2026-11-14
 
 ### Added
