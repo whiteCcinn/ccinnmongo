@@ -23,6 +23,14 @@ struct CcinnMongoApp: App {
         Settings {
             SettingsRootView()
         }
+
+        Window("Software Update", id: SoftwareUpdateView.windowID) {
+            SoftwareUpdateView()
+                .preferredColorScheme(AppearancePreference(rawValue: appearance)?.colorScheme)
+                .tint(Theme.accent)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }
 
@@ -49,13 +57,19 @@ struct SettingsRootView: View {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Also behave like a regular app when launched from `swift run` (no bundle).
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        if SnapshotTool.isRequested {
+            // Automated snapshots must not take focus from whoever is using the Mac.
+            NSApp.setActivationPolicy(.accessory)
+        } else {
+            // Also behave like a regular app when launched from `swift run` (no bundle).
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         NSWindow.allowsAutomaticWindowTabbing = false
         LaunchArguments.openSettingsIfRequested()
         SnapshotTool.scheduleIfRequested()
         Task { @MainActor in AgentService.shared.refresh() }
+        UpdateController.shared.scheduleAutomaticCheck()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -70,7 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct RootView: View {
     @State private var session = WindowSession()
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     private let store = AppServices.shared.profiles
+    private let updates = UpdateController.shared
 
     var body: some View {
         Group {
@@ -90,9 +106,11 @@ struct RootView: View {
         .focusedSceneValue(\.windowSession, session)
         .navigationTitle(windowTitle)
         .onDisappear { session.disconnect() }
+        .onChange(of: updates.windowRequest) { openWindow(id: SoftwareUpdateView.windowID) }
         .task {
             LaunchArguments.consume(into: session)
             LaunchArguments.openSettingsOnce(openSettings)
+            LaunchArguments.checkForUpdatesOnce()
         }
     }
 
@@ -142,6 +160,16 @@ enum LaunchArguments {
         guard settingsTab != nil, !openedSettings else { return }
         openedSettings = true
         openSettings()
+    }
+
+    private static var checkedForUpdates = false
+
+    /// `--check-updates` runs a manual update check and opens the Software Update window
+    /// (combine with `--pretend-version 1.0.0` to see the "available" state).
+    static func checkForUpdatesOnce() {
+        guard ProcessInfo.processInfo.arguments.contains("--check-updates"), !checkedForUpdates else { return }
+        checkedForUpdates = true
+        UpdateController.shared.checkForUpdates(automatic: false)
     }
 
     static func consume(into session: WindowSession) {
@@ -199,6 +227,8 @@ enum LaunchArguments {
 /// into a PNG (used for automated visual checks; needs no screen-recording permission).
 @MainActor
 enum SnapshotTool {
+    static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("--snapshot") }
+
     static func scheduleIfRequested() {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: "--snapshot"), arguments.indices.contains(index + 1) else { return }
@@ -210,10 +240,12 @@ enum SnapshotTool {
         }
         let quit = arguments.contains("--quit-after-snapshot")
         let wantsSettings = LaunchArguments.settingsTab != nil
+        let wantsUpdates = arguments.contains("--check-updates")
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             let visible = NSApp.windows.filter { $0.isVisible && $0.contentView != nil && $0.frame.width > 400 }
             let settings = visible.first { $0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true }
-            if let window = (wantsSettings ? settings ?? NSApp.keyWindow : nil) ?? visible.first,
+            let updates = visible.first { $0.title == "Software Update" }
+            if let window = (wantsUpdates ? updates : nil) ?? (wantsSettings ? settings ?? NSApp.keyWindow : nil) ?? visible.first,
                let view = window.contentView?.superview ?? window.contentView,
                let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                 view.cacheDisplay(in: view.bounds, to: bitmap)
@@ -243,21 +275,50 @@ struct SettingsView: View {
     @AppStorage("appearance") private var appearance = AppearancePreference.system.rawValue
     @AppStorage("defaultPageSize") private var pageSize = 20
     @AppStorage("defaultViewMode") private var viewMode = DocumentViewMode.list.rawValue
+    @AppStorage(UpdateController.automaticCheckKey) private var automaticallyCheck = true
+    @Environment(\.openWindow) private var openWindow
+    private let updates = UpdateController.shared
 
     var body: some View {
         Form {
-            Picker("Appearance", selection: $appearance) {
-                ForEach(AppearancePreference.allCases) { Text($0.rawValue).tag($0.rawValue) }
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppearancePreference.allCases) { Text($0.rawValue).tag($0.rawValue) }
+                }
+                Picker("Documents per page", selection: $pageSize) {
+                    ForEach([10, 20, 50, 100, 200], id: \.self) { Text("\($0)").tag($0) }
+                }
+                Picker("Default view", selection: $viewMode) {
+                    ForEach(DocumentViewMode.allCases) { Text($0.rawValue).tag($0.rawValue) }
+                }
+                LabeledContent("Saved connections") {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([AppPaths.applicationSupport])
+                    }
+                }
             }
-            Picker("Documents per page", selection: $pageSize) {
-                ForEach([10, 20, 50, 100, 200], id: \.self) { Text("\($0)").tag($0) }
+            Section("Updates") {
+                Toggle("Check for updates automatically", isOn: $automaticallyCheck)
+                LabeledContent("Last checked") {
+                    HStack(spacing: 10) {
+                        Text(updates.lastCheck?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
+                            .foregroundStyle(.secondary)
+                        Button("Check Now") {
+                            updates.reset()
+                            updates.checkForUpdates(automatic: false)
+                            openWindow(id: SoftwareUpdateView.windowID)
+                        }
+                    }
+                }
             }
-            Picker("Default view", selection: $viewMode) {
-                ForEach(DocumentViewMode.allCases) { Text($0.rawValue).tag($0.rawValue) }
-            }
-            LabeledContent("Saved connections") {
-                Button("Show in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([AppPaths.applicationSupport])
+            Section("About") {
+                LabeledContent("Version", value: AppInfo.version)
+                LabeledContent("Project") {
+                    HStack(spacing: 12) {
+                        Link("GitHub", destination: AppInfo.links.repository)
+                        Link("Release Notes", destination: AppInfo.links.releases)
+                        Link("Report an Issue", destination: AppInfo.links.newIssue)
+                    }
                 }
             }
         }
@@ -281,8 +342,23 @@ extension FocusedValues {
 
 struct AppCommands: Commands {
     @FocusedValue(\.windowSession) private var session
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About CcinnMongo") { AboutPanel.show() }
+            Button("Check for Updates…") {
+                UpdateController.shared.reset()
+                UpdateController.shared.checkForUpdates(automatic: false)
+                openWindow(id: SoftwareUpdateView.windowID)
+            }
+        }
+        CommandGroup(replacing: .help) {
+            Button("CcinnMongo on GitHub") { NSWorkspace.shared.open(AppInfo.links.repository) }
+            Button("Release Notes") { NSWorkspace.shared.open(AppInfo.links.releases) }
+            Divider()
+            Button("Report an Issue…") { NSWorkspace.shared.open(AppInfo.links.newIssue) }
+        }
         CommandGroup(after: .newItem) {
             Button("Disconnect") { session?.disconnect() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
