@@ -14,7 +14,13 @@ struct WireMessageTests {
                             numberToReturn: -1, query: ["isMaster": 1])
         let bytes = try WireRequest.query(query).encode(requestID: 7)
         let doc = try ["isMaster": 1 as BSONValue].bsonBytesForTest()
-        let expectedBody: [UInt8] = [4, 0, 0, 0] + Array("admin.$cmd".utf8) + [0] + [0, 0, 0, 0] + [0xFF, 0xFF, 0xFF, 0xFF] + doc
+        // Built step by step: one long chain of `+` on array literals is too slow for older type checkers (Swift 6.2 in CI).
+        var expectedBody: [UInt8] = [4, 0, 0, 0]
+        expectedBody.append(contentsOf: Array("admin.$cmd".utf8))
+        expectedBody.append(0)
+        expectedBody.append(contentsOf: [0, 0, 0, 0] as [UInt8])
+        expectedBody.append(contentsOf: [0xFF, 0xFF, 0xFF, 0xFF] as [UInt8])
+        expectedBody.append(contentsOf: doc)
         let h = header(of: bytes)
         #expect(Int(h.length) == bytes.count)
         #expect(h.requestID == 7)

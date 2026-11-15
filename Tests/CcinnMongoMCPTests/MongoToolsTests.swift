@@ -444,7 +444,9 @@ struct MongoToolsTests {
         let started = ContinuousClock.now
         let result = try await call(harness, "find", #"{"database":"shop","collection":"orders","timeout_ms":100}"#)
         #expect(errorMessage(result)?.contains("100 ms") == true)
-        #expect(ContinuousClock.now - started < .seconds(5))
+        // The fake hangs for an hour, so finishing at all proves the deadline abandoned it. The bound is generous
+        // because wall-clock time on a busy CI runner includes other tests' work.
+        #expect(ContinuousClock.now - started < .seconds(30))
     }
 
     @Test func repeatedTimeoutsEvictTheSession() async throws {

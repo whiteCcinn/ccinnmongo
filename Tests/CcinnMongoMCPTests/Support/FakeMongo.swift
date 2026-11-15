@@ -36,7 +36,9 @@ final class FakeMongoClient: MongoToolClient, @unchecked Sendable {
     private func record(_ operation: String, _ namespace: String, _ detail: String = "") async throws {
         lock.withLock { _calls.append(Call(operation: operation, namespace: namespace, detail: detail)) }
         if hangs {
-            while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(5)) }
+            // One long sleep that ends as soon as the task is cancelled. Polling every few milliseconds kept the
+            // small Swift concurrency pool of CI runners busy and slowed every other test.
+            try? await Task.sleep(for: .seconds(3_600))
             throw MongoError(.cancelled, "The operation was cancelled")
         }
         if let error { throw error }
