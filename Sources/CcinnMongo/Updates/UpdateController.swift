@@ -42,7 +42,7 @@ final class UpdateController {
     private var inFlightIsAutomatic = false
     /// The last attempt that failed for lack of network; retried after an hour (review F4). Memory only.
     private var lastFailure: Date?
-    private let log = Logger(subsystem: "io.github.whiteccinn.ccinnmongo", category: "updates")
+    private let log = Logger(subsystem: "io.github.whiteccinn.\(AppInfo.repository.name.lowercased())", category: "updates")
 
     init(defaults: UserDefaults = .standard, client: any UpdateHTTPClient = URLSessionUpdateClient()) {
         self.defaults = defaults
@@ -55,7 +55,7 @@ final class UpdateController {
 
     /// The version compared against releases (`--pretend-version` lets snapshots show the "available" state).
     var currentVersion: SemanticVersion {
-        LaunchArguments.value("--pretend-version").flatMap(SemanticVersion.init) ?? AppInfo.semanticVersion
+        Self.argument("--pretend-version").flatMap(SemanticVersion.init) ?? AppInfo.semanticVersion
     }
 
     var skippedVersion: String? { defaults.string(forKey: Keys.skipped) }
@@ -165,7 +165,13 @@ final class UpdateController {
     static var automaticChecksDisabledForThisLaunch: Bool {
         let arguments = ProcessInfo.processInfo.arguments
         return arguments.contains("--snapshot") || arguments.contains("--no-update-check")
-            || ProcessInfo.processInfo.environment["CCINNMONGO_DISABLE_UPDATE_CHECK"] == "1"
+            || ProcessInfo.processInfo.environment["\(AppInfo.productName.uppercased())_DISABLE_UPDATE_CHECK"] == "1"
+    }
+
+    private static func argument(_ flag: String) -> String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+        return arguments[index + 1]
     }
 
     // MARK: Actions
@@ -270,7 +276,7 @@ enum AboutPanel {
             .foregroundColor: NSColor.secondaryLabelColor,
             .paragraphStyle: center,
         ]
-        let credits = NSMutableAttributedString(string: "A fast, native MongoDB client for macOS.\n", attributes: body)
+        let credits = NSMutableAttributedString(string: AppInfo.tagline + "\n", attributes: body)
         var link = body
         link[.link] = AppInfo.links.repository
         credits.append(NSAttributedString(string: "github.com/\(AppInfo.repository.owner)/\(AppInfo.repository.name)", attributes: link))

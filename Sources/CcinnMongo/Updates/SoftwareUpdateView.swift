@@ -27,7 +27,7 @@ struct SoftwareUpdateView: View {
                     .toggleStyle(.checkbox)
                     .font(.callout)
                 Spacer()
-                Link("CcinnMongo on GitHub", destination: AppInfo.links.repository)
+                Link("\(AppInfo.productName) on GitHub", destination: AppInfo.links.repository)
                     .font(.callout)
             }
         }
@@ -46,8 +46,8 @@ struct SoftwareUpdateView: View {
         case .idle: "Software Update"
         case .checking: "Checking for Updates…"
         case .upToDate: "You’re Up to Date"
-        case let .available(release): "CcinnMongo \(release.version) Is Available"
-        case let .downloading(release, _): "Downloading CcinnMongo \(release.version)…"
+        case let .available(release): "\(AppInfo.productName) \(release.version) Is Available"
+        case let .downloading(release, _): "Downloading \(AppInfo.productName) \(release.version)…"
         case .downloaded: "Ready to Install"
         case .failed: "Update Check Failed"
         }
@@ -56,19 +56,19 @@ struct SoftwareUpdateView: View {
     private var subtitle: String {
         switch updates.phase {
         case .idle:
-            return "You have CcinnMongo \(current)."
+            return "You have \(AppInfo.productName) \(current)."
         case .checking:
             return "Looking for the latest release on GitHub."
         case let .upToDate(latest):
             return latest == nil ? "No release has been published yet. You have \(current)."
-                : "CcinnMongo \(current) is the latest version."
+                : "\(AppInfo.productName) \(current) is the latest version."
         case let .available(release):
             let date = release.publishedAt.map { " · released \($0.formatted(date: .abbreviated, time: .omitted))" } ?? ""
             return "You have \(current)\(date)."
         case .downloading:
             return "The disk image is verified against the release’s SHA-256 checksum before it is opened."
         case .downloaded:
-            return "The verified disk image is open. Quit CcinnMongo, then drag CcinnMongo onto Applications and choose Replace."
+            return "The verified disk image is open. Quit \(AppInfo.productName), then drag \(AppInfo.productName) onto Applications and choose Replace."
         case let .failed(message, _):
             return message
         }
@@ -129,7 +129,7 @@ struct SoftwareUpdateView: View {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file]) }
                 Spacer()
                 Button("Later") { close() }
-                Button("Quit CcinnMongo") { NSApp.terminate(nil) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                Button("Quit \(AppInfo.productName)") { NSApp.terminate(nil) }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
             }
         case let .failed(_, release):
             HStack {
