@@ -37,6 +37,11 @@ final class UpdateController {
     private var generation = 0
     private var work: Task<Void, Never>?
     private var scheduledAutomaticCheck = false
+    /// Whether the check in flight is a silent automatic one. A manual request while it runs makes it
+    /// manual, so its result is always shown (review F1).
+    private var inFlightIsAutomatic = false
+    /// The last attempt that failed for lack of network; retried after an hour (review F4). Memory only.
+    private var lastFailure: Date?
     private let log = Logger(subsystem: "io.github.whiteccinn.ccinnmongo", category: "updates")
 
     init(defaults: UserDefaults = .standard, client: any UpdateHTTPClient = URLSessionUpdateClient()) {
@@ -62,13 +67,18 @@ final class UpdateController {
     func checkForUpdates(automatic: Bool) {
         if !automatic { windowRequest &+= 1 }
         switch phase {
-        case .checking, .downloading:
-            return // Already working; a manual request just brings the window forward.
+        case .checking:
+            if !automatic { inFlightIsAutomatic = false }
+            return // Already checking; a manual request joins it and will see its result.
+        case .downloading:
+            return // A manual request just brings the window forward.
         default:
             break
         }
+        work?.cancel()
         generation &+= 1
         let token = generation
+        inFlightIsAutomatic = automatic
         phase = .checking
         let checker = UpdateChecker(repository: AppInfo.repository, currentVersion: currentVersion, client: client)
         work = Task { [weak self] in
@@ -80,17 +90,23 @@ final class UpdateController {
             } catch {
                 outcome = .failure(UpdateError(.network, error.localizedDescription))
             }
-            self?.finishCheck(outcome, token: token, automatic: automatic)
+            self?.finishCheck(outcome, token: token)
         }
     }
 
-    private func finishCheck(_ outcome: Result<UpdateCheckResult, UpdateError>, token: Int, automatic: Bool) {
+    private func finishCheck(_ outcome: Result<UpdateCheckResult, UpdateError>, token: Int) {
         guard token == generation else { return }
+        let automatic = inFlightIsAutomatic
         if case .failure(let error) = outcome, error.kind == .cancelled {
             phase = .idle
             return
         }
-        recordCheck()
+        if case .failure(let error) = outcome, error.kind == .network {
+            lastFailure = Date() // No answer from GitHub: not a completed check.
+        } else {
+            lastFailure = nil
+            recordCheck()
+        }
         switch outcome {
         case .success(.available(let release)):
             if UpdateSchedule.shouldPresent(release.version, skipped: skippedVersion, automatic: automatic) {
@@ -119,15 +135,31 @@ final class UpdateController {
         defaults.set(now, forKey: Keys.lastCheck)
     }
 
-    /// Once per process, 8 s after launch, when due and allowed (never in snapshot or test launches).
+    /// Starts 8 s after launch and then looks every 30 minutes, so an app left open for weeks still checks
+    /// daily (review F4). Never in snapshot or test launches.
     func scheduleAutomaticCheck() {
         guard !scheduledAutomaticCheck, !Self.automaticChecksDisabledForThisLaunch else { return }
         scheduledAutomaticCheck = true
-        Task { [weak self] in
+        let controller = self // The controller lives for the whole process.
+        Task {
             try? await Task.sleep(for: .seconds(8))
-            guard let self, UpdateSchedule.isDue(now: Date(), lastCheck: lastCheck, enabled: defaults.bool(forKey: Keys.automatic)) else { return }
-            if case .idle = phase { checkForUpdates(automatic: true) }
+            while !Task.isCancelled {
+                controller.checkIfDue()
+                try? await Task.sleep(for: .seconds(30 * 60))
+            }
         }
+    }
+
+    private func checkIfDue() {
+        // Any settled state may be refreshed (closing the window with its close button leaves the last
+        // result in place); never while checking, downloading, or with a download ready to install.
+        switch phase {
+        case .idle, .upToDate, .available, .failed: break
+        case .checking, .downloading, .downloaded: return
+        }
+        guard UpdateSchedule.isDue(now: Date(), lastCheck: lastCheck, lastFailure: lastFailure,
+                                   enabled: defaults.bool(forKey: Keys.automatic)) else { return }
+        checkForUpdates(automatic: true)
     }
 
     static var automaticChecksDisabledForThisLaunch: Bool {
@@ -139,6 +171,11 @@ final class UpdateController {
     // MARK: Actions
 
     func download(_ release: ReleaseInfo) {
+        switch phase {
+        case .available, .failed, .downloaded: break
+        default: return // Never two downloads at once (review F5).
+        }
+        work?.cancel()
         generation &+= 1
         let token = generation
         phase = .downloading(release, progress: 0)
@@ -171,10 +208,15 @@ final class UpdateController {
     }
 
     private func finishDownload(_ outcome: Result<URL, UpdateError>, release: ReleaseInfo, token: Int) {
-        guard token == generation else { return }
+        guard token == generation else {
+            // Superseded: do not leave an unannounced copy in Downloads.
+            if case .success(let file) = outcome { try? FileManager.default.removeItem(at: file) }
+            return
+        }
         switch outcome {
         case .success(let file):
             phase = .downloaded(release, file: file)
+            windowRequest &+= 1 // Show the next steps even if the window was closed meanwhile.
             NSWorkspace.shared.open(file)
         case .failure(let error) where error.kind == .cancelled:
             phase = .available(release)

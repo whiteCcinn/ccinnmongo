@@ -43,7 +43,8 @@ struct SoftwareUpdateView: View {
 
     private var title: String {
         switch updates.phase {
-        case .idle, .checking: "Checking for Updates…"
+        case .idle: "Software Update"
+        case .checking: "Checking for Updates…"
         case .upToDate: "You’re Up to Date"
         case let .available(release): "CcinnMongo \(release.version) Is Available"
         case let .downloading(release, _): "Downloading CcinnMongo \(release.version)…"
@@ -54,7 +55,9 @@ struct SoftwareUpdateView: View {
 
     private var subtitle: String {
         switch updates.phase {
-        case .idle, .checking:
+        case .idle:
+            return "You have CcinnMongo \(current)."
+        case .checking:
             return "Looking for the latest release on GitHub."
         case let .upToDate(latest):
             return latest == nil ? "No release has been published yet. You have \(current)."
@@ -74,7 +77,15 @@ struct SoftwareUpdateView: View {
     @ViewBuilder
     private var content: some View {
         switch updates.phase {
-        case .idle, .checking:
+        case .idle:
+            // Never a spinner without work behind it: a settled idle state offers a fresh check.
+            HStack {
+                Spacer()
+                Button("Check Now") { updates.checkForUpdates(automatic: false) }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        case .checking:
             ProgressView().controlSize(.small).frame(maxWidth: .infinity, alignment: .leading)
         case .upToDate:
             HStack {
@@ -171,6 +182,8 @@ private struct ReleaseNotesView: View {
         }
         .frame(height: 220)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        // Release notes are server text: only web links open (review F7).
+        .environment(\.openURL, OpenURLAction { url in url.scheme?.lowercased() == "https" ? .systemAction : .discarded })
     }
 
     static func inline(_ text: String) -> AttributedString {

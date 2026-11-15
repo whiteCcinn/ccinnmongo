@@ -42,6 +42,11 @@ public struct GitHubRepository: Sendable, Hashable {
         isGitHubURL(url, pathPrefix: "/\(owner)/\(name)/releases/download/")
     }
 
+    /// A download from this repository's release `tag` (both assets of one release share this prefix).
+    public func isReleaseDownload(_ url: URL, tag: String) -> Bool {
+        !tag.isEmpty && !tag.contains("/") && isGitHubURL(url, pathPrefix: "/\(owner)/\(name)/releases/download/\(tag)/")
+    }
+
     /// A release page of this repository.
     public func isReleasePage(_ url: URL) -> Bool {
         isGitHubURL(url, pathPrefix: "/\(owner)/\(name)/releases")
@@ -120,7 +125,8 @@ public struct ReleaseInfo: Sendable, Equatable {
         let browser_download_url: String
     }
 
-    /// Decodes GitHub's `releases/latest` response. Assets with a foreign URL or an implausible size are dropped.
+    /// Decodes GitHub's `releases/latest` response. Assets with a foreign URL (another repository or another
+    /// release's tag) or an implausible size are dropped.
     public static func decode(_ data: Data, repository: GitHubRepository) throws -> ReleaseInfo {
         let payload: Payload
         do {
@@ -132,7 +138,7 @@ public struct ReleaseInfo: Sendable, Equatable {
             throw UpdateError(.invalidResponse, "The latest release tag “\(payload.tag_name.prefix(40))” is not a version number.")
         }
         let assets = (payload.assets ?? []).prefix(100).compactMap { asset -> ReleaseAsset? in
-            guard let url = URL(string: asset.browser_download_url), repository.isReleaseDownload(url) else { return nil }
+            guard let url = URL(string: asset.browser_download_url), repository.isReleaseDownload(url, tag: payload.tag_name) else { return nil }
             return ReleaseAsset(name: asset.name, url: url, size: asset.size ?? -1)
         }
         let diskImage = assets.first { $0.name.lowercased().hasSuffix(".dmg") && (1...maxDiskImageBytes).contains($0.size) }
@@ -176,6 +182,17 @@ public enum UpdateSchedule {
         return elapsed < 0 || elapsed >= interval
     }
 
+    /// A failed attempt (no network) is not a completed check: it is retried after this delay.
+    public static let retryAfterFailure: TimeInterval = 3_600
+
+    /// Due as above, and at least an hour after a failed attempt (review F4).
+    public static func isDue(now: Date, lastCheck: Date?, lastFailure: Date?, enabled: Bool) -> Bool {
+        guard isDue(now: now, lastCheck: lastCheck, enabled: enabled) else { return false }
+        guard let lastFailure else { return true }
+        let elapsed = now.timeIntervalSince(lastFailure)
+        return elapsed < 0 || elapsed >= retryAfterFailure
+    }
+
     /// A skipped version only silences automatic checks; a manual check always shows it.
     public static func shouldPresent(_ latest: SemanticVersion, skipped: String?, automatic: Bool) -> Bool {
         guard automatic, let skipped, let skippedVersion = SemanticVersion(skipped) else { return true }
@@ -209,7 +226,8 @@ public enum ReleaseNotes {
             paragraph = []
         }
 
-        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        // `\r\n` is a single Character, so split on every kind of line break (review F3).
+        for rawLine in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             if blocks.count >= maxBlocks { break }
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.isEmpty || line.hasPrefix("```") {

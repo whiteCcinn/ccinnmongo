@@ -90,17 +90,37 @@ public struct UpdateDownloader: Sendable {
         let temporary = try await UpdateErrors.mapped("the download server") {
             try await client.download(image.url, expectedBytes: image.size, progress: progress)
         }
+        // Hashing up to 1 GiB and a cross-volume move are long synchronous work: keep them off the
+        // Swift concurrency pool (review F9), with cancellation checked between chunks.
+        let destination = destination
+        let cancelled = OSAllocatedUnfairLock(initialState: false)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, any Error>) in
+                DispatchQueue.global(qos: .utility).async {
+                    continuation.resume(with: Result {
+                        try Self.verifyAndSave(temporary, as: image, sha256: expected, in: destination) { cancelled.withLock { $0 } }
+                    })
+                }
+            }
+        } onCancel: {
+            cancelled.withLock { $0 = true }
+        }
+    }
+
+    /// Checks size and SHA-256, then moves the file to a free name in `folder`; deletes it on any failure.
+    static func verifyAndSave(_ temporary: URL, as image: ReleaseAsset, sha256 expected: String, in folder: URL,
+                              isCancelled: () -> Bool) throws -> URL {
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: temporary.path)
             let size = (attributes[.size] as? NSNumber)?.int64Value ?? -1
             guard size == image.size else {
                 throw UpdateError(.verificationFailed, "The download has \(size) bytes, but the release lists \(image.size). Nothing was saved.")
             }
-            guard try Self.sha256(of: temporary) == expected else {
+            guard try sha256(of: temporary, isCancelled: isCancelled) == expected else {
                 throw UpdateError(.verificationFailed, "The download does not match its published SHA-256 checksum. Nothing was saved.")
             }
-            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-            let target = Self.uniqueDestination(for: image.name, in: destination)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let target = uniqueDestination(for: image.name, in: folder)
             try FileManager.default.moveItem(at: temporary, to: target)
             return target
         } catch {
@@ -131,12 +151,12 @@ public struct UpdateDownloader: Sendable {
     }
 
     /// SHA-256 as lowercase hex, read in 1 MiB chunks.
-    static func sha256(of file: URL) throws -> String {
+    static func sha256(of file: URL, isCancelled: () -> Bool = { false }) throws -> String {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
         var hasher = SHA256()
         while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
-            if Task.isCancelled { throw UpdateError(.cancelled, "The download was cancelled.") }
+            if isCancelled() { throw UpdateError(.cancelled, "The download was cancelled.") }
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
@@ -205,11 +225,13 @@ public final class URLSessionUpdateClient: UpdateHTTPClient {
 }
 
 /// Bridges one `URLSessionDownloadTask` to async/await with progress and a size cap.
-private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Sendable {
+final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Sendable {
     private struct State {
         var continuation: CheckedContinuation<URL, any Error>?
         var file: URL?
         var failure: UpdateError?
+        /// The task finished before `start` stored the continuation (cancelled before it began, review F2).
+        var outcome: Result<URL, any Error>?
     }
 
     private let state = OSAllocatedUnfairLock(uncheckedState: State())
@@ -222,8 +244,16 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Send
     }
 
     func start(_ task: URLSessionDownloadTask, continuation: CheckedContinuation<URL, any Error>) {
-        state.withLockUnchecked { $0.continuation = continuation }
-        task.resume()
+        let finished = state.withLockUnchecked { state -> Result<URL, any Error>? in
+            if let outcome = state.outcome { return outcome }
+            state.continuation = continuation
+            return nil
+        }
+        if let finished {
+            continuation.resume(with: finished)
+        } else {
+            task.resume()
+        }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
@@ -252,21 +282,26 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Send
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
-        let (continuation, file, failure) = state.withLockUnchecked { state in
-            defer { state.continuation = nil }
-            return (state.continuation, state.file, state.failure)
-        }
-        guard let continuation else { return }
+        let (file, failure) = state.withLockUnchecked { ($0.file, $0.failure) }
+        let outcome: Result<URL, any Error>
         if let failure {
-            if let file { try? FileManager.default.removeItem(at: file) }
-            continuation.resume(throwing: failure)
+            outcome = .failure(failure)
         } else if let error {
-            if let file { try? FileManager.default.removeItem(at: file) }
-            continuation.resume(throwing: error)
+            outcome = .failure(error)
         } else if let file {
-            continuation.resume(returning: file)
+            outcome = .success(file)
         } else {
-            continuation.resume(throwing: UpdateError(.network, "The download ended without a file."))
+            outcome = .failure(UpdateError(.network, "The download ended without a file."))
         }
+        if case .failure = outcome, let file { try? FileManager.default.removeItem(at: file) }
+        let continuation = state.withLockUnchecked { state -> CheckedContinuation<URL, any Error>? in
+            guard let continuation = state.continuation else {
+                state.outcome = outcome
+                return nil
+            }
+            state.continuation = nil
+            return continuation
+        }
+        continuation?.resume(with: outcome)
     }
 }

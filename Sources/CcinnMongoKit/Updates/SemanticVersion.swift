@@ -48,7 +48,10 @@ public struct SemanticVersion: Sendable, Hashable, Comparable, CustomStringConve
     }
 
     private static func isValidIdentifier(_ part: Substring) -> Bool {
-        !part.isEmpty && part.count <= 64 && part.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+        guard !part.isEmpty, part.count <= 64, part.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { return false }
+        // Numeric identifiers must not have leading zeros (SemVer §9), so `==` and `<` always agree (review F8).
+        let numeric = part.allSatisfy { $0.isNumber }
+        return !(numeric && part.count > 1 && part.first == "0")
     }
 
     public var isPreRelease: Bool { !preRelease.isEmpty }

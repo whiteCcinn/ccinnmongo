@@ -73,7 +73,8 @@ struct SemanticVersionTests {
         #expect(try #require(SemanticVersion(text)).description == expected)
     }
 
-    @Test(arguments: ["", "v", "latest", "1..2", "1.2.3.4", "1.x", "-1.0.0", "1.0.0-", "99999999999999999999.0.0", "1.2.3-beta..1", "1.0.0-be ta"])
+    @Test(arguments: ["", "v", "latest", "1..2", "1.2.3.4", "1.x", "-1.0.0", "1.0.0-", "99999999999999999999.0.0", "1.2.3-beta..1", "1.0.0-be ta",
+                       "1.0.0-beta.01", "1.0.0-00"])
     func rejects(text: String) {
         #expect(SemanticVersion(text) == nil)
     }
@@ -120,6 +121,15 @@ struct ReleaseInfoTests {
     @Test func refusesOversizedDiskImages() throws {
         let release = try ReleaseInfo.decode(releaseJSON(dmgSize: ReleaseInfo.maxDiskImageBytes + 1), repository: repository)
         #expect(release.diskImage == nil)
+    }
+
+    /// Review F6: an asset from another tag (for example an older, vulnerable build) is not offered.
+    @Test func assetsMustBelongToTheReleaseTag() throws {
+        let other = "https://github.com/whiteCcinn/ccinnmongo/releases/download/v0.9.0/CcinnMongo-1.2.0.dmg"
+        #expect(try ReleaseInfo.decode(releaseJSON(dmgURL: other), repository: repository).diskImage == nil)
+        var text = String(decoding: releaseJSON(), as: UTF8.self)
+        text = text.replacingOccurrences(of: "download/v1.2.0/SHA256SUMS.txt", with: "download/v0.9.0/SHA256SUMS.txt")
+        #expect(try ReleaseInfo.decode(Data(text.utf8), repository: repository).checksums == nil)
     }
 
     @Test func foreignReleasePageFallsBackToTheRepository() throws {
@@ -175,6 +185,15 @@ struct UpdateScheduleTests {
         #expect(!UpdateSchedule.isDue(now: now, lastCheck: nil, enabled: false))
     }
 
+    /// Review F4: a failed attempt (offline) does not count as a check; it is retried after an hour.
+    @Test func failedAttemptsRetryHourly() {
+        let failedMinutesAgo = now.addingTimeInterval(-600)
+        #expect(!UpdateSchedule.isDue(now: now, lastCheck: nil, lastFailure: failedMinutesAgo, enabled: true))
+        #expect(UpdateSchedule.isDue(now: now, lastCheck: nil, lastFailure: now.addingTimeInterval(-3_601), enabled: true))
+        #expect(!UpdateSchedule.isDue(now: now, lastCheck: now.addingTimeInterval(-60), lastFailure: nil, enabled: true))
+        #expect(UpdateSchedule.isDue(now: now, lastCheck: nil, lastFailure: now.addingTimeInterval(60), enabled: true), "clock moved backwards")
+    }
+
     @Test func skippedVersionsOnlyMuteAutomaticChecks() throws {
         let latest = try #require(SemanticVersion("1.2.0"))
         #expect(!UpdateSchedule.shouldPresent(latest, skipped: "1.2.0", automatic: true))
@@ -214,6 +233,11 @@ struct ReleaseNotesTests {
     @Test func hugeInputIsBounded() {
         let blocks = ReleaseNotes.blocks(from: String(repeating: "- item\n", count: 100_000))
         #expect(blocks.count <= ReleaseNotes.maxBlocks)
+    }
+
+    /// Review F3: GitHub returns CRLF line endings for notes edited in the web UI ("\r\n" is one Character).
+    @Test func crlfLineEndings() {
+        #expect(ReleaseNotes.blocks(from: "## Fixed\r\n\r\n- one\r\n- two\r\n") == [.heading("Fixed"), .bullet("one"), .bullet("two")])
     }
 }
 
@@ -357,5 +381,21 @@ struct AppInfoTests {
     @Test func versionFallsBackForUnbundledBuilds() {
         #expect(SemanticVersion(AppInfo.version) != nil)
         #expect(AppInfo.repository == repository)
+    }
+}
+
+@Suite("Download bridge")
+struct DownloadBridgeTests {
+    /// Review F2: a task cancelled before `start` may complete before the continuation is stored; the
+    /// outcome is kept and `start` resumes at once instead of waiting forever.
+    @Test func completionBeforeStartStillResumes() async throws {
+        let delegate = DownloadDelegate(expectedBytes: 10) { _ in }
+        let task = URLSession.shared.downloadTask(with: URL(fileURLWithPath: "/nonexistent"))
+        delegate.urlSession(URLSession.shared, task: task, didCompleteWithError: URLError(.cancelled))
+        await #expect(throws: URLError.self) {
+            _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, any Error>) in
+                delegate.start(task, continuation: continuation)
+            }
+        }
     }
 }
