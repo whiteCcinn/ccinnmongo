@@ -6,12 +6,10 @@ import MongoKit
 
 /// `CcinnMongo mcp`: runs the MCP server headless on stdin/stdout and exits when stdin closes.
 public enum MCPCommand {
-    /// Used when the executable does not run from an app bundle (e.g. `swift run`).
-    public static let fallbackVersion = "1.1.0"
+    /// Used when the executable does not run from an app bundle (e.g. `swift run`); shared with the update check.
+    public static let fallbackVersion = AppInfo.fallbackVersion
 
-    public static var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? fallbackVersion
-    }
+    public static var appVersion: String { AppInfo.version }
 
     /// Never returns. Nothing but protocol messages is written to stdout; diagnostics go to stderr.
     public static func run(arguments: [String]) -> Never {
