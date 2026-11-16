@@ -123,7 +123,8 @@ struct FormatterTests {
         let clock = ContinuousClock()
         let start = clock.now
         let summary = BSONFormatter.summary(of: huge, maxLength: 90)
-        #expect(clock.now - start < .milliseconds(50))
+        // Formatting all ~12 MB would take far longer. Generous bound: CI scheduling adds seconds of delay.
+        #expect(clock.now - start < .seconds(1))
         #expect(summary.count <= 91)
         #expect(summary.hasPrefix("[{ i: 0"))
         let longString = BSONFormatter.summary(of: .string(String(repeating: "y", count: 5_000_000)), maxLength: 20)

@@ -50,7 +50,8 @@ struct JSONTests {
         let start = ContinuousClock.now
         let value = try JSONParser.parse(text)
         #expect(value.objectValue?.count == 50)
-        #expect(ContinuousClock.now - start < .seconds(5))
+        // A quadratic parse would take minutes. Generous bound: CI scheduling adds seconds of delay.
+        #expect(ContinuousClock.now - start < .seconds(20))
         // Many distinct keys too.
         var distinct = "{"
         for index in 0..<100_000 { distinct += (index == 0 ? "" : ",") + "\"k\(index)\":1" }

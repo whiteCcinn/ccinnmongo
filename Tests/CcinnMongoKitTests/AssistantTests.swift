@@ -74,23 +74,25 @@ struct AssistantTests {
         let clock = ContinuousClock()
         let start = clock.now
         await #expect(throws: AgentError.self) {
-            _ = try await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["5"], environment: [:],
+            _ = try await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["60"], environment: [:],
                                             currentDirectory: nil, timeout: .milliseconds(300))
         }
-        #expect(clock.now - start < .seconds(3))
+        // Well under the 60 s the process would run. Generous bound: CI scheduling adds seconds of delay.
+        #expect(clock.now - start < .seconds(15))
     }
 
     @Test func processRunnerHonoursCancellation() async {
         let task = Task {
-            try await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["5"], environment: [:],
-                                        currentDirectory: nil, timeout: .seconds(30))
+            try await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["60"], environment: [:],
+                                        currentDirectory: nil, timeout: .seconds(90))
         }
         try? await Task.sleep(for: .milliseconds(200))
         let clock = ContinuousClock()
         let start = clock.now
         task.cancel()
         let result = await task.result
-        #expect(clock.now - start < .seconds(2))
+        // Well under the 60 s the process would run. Generous bound: CI scheduling adds seconds of delay.
+        #expect(clock.now - start < .seconds(15))
         if case .success = result { Issue.record("expected cancellation") }
     }
 

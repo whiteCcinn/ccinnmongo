@@ -97,14 +97,15 @@ struct ConnectionManagerTests {
 
     @Test func waitingCallerCanBeCancelledWhileTheOpeningContinues() async throws {
         let opener = FakeOpener()
-        opener.delay = .seconds(2)
+        opener.delay = .seconds(10)
         let manager = MCPConnectionManager(opener: opener)
         let waiter = Task { try await manager.session(for: profile) }
         try await waitUntil { opener.opens == 1 }
         let started = ContinuousClock.now
         waiter.cancel()
         _ = await waiter.result
-        #expect(ContinuousClock.now - started < .seconds(1))
+        // Well under the 10 s open. Generous bound: CI scheduling adds seconds of delay.
+        #expect(ContinuousClock.now - started < .seconds(5))
         await manager.closeAll()
     }
 

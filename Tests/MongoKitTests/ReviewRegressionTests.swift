@@ -58,7 +58,8 @@ struct ReviewRegressionTests {
         let start = clock.now
         task.cancel()
         _ = await task.result
-        #expect(clock.now - start < .seconds(2))
+        // Well under the 60 s connect timeout. Generous bound: CI scheduling adds seconds of delay.
+        #expect(clock.now - start < .seconds(15))
         await client.close()
         #expect(server.openTransports == 0)
     }

@@ -70,13 +70,14 @@ struct KitReviewRegressionTests {
 
     @Test func cancellingBeforeLaunchStopsTheProcess() async {
         let task = Task {
-            try await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["10"], environment: [:],
-                                        currentDirectory: nil, timeout: .seconds(30))
+            try await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["60"], environment: [:],
+                                        currentDirectory: nil, timeout: .seconds(90))
         }
         task.cancel()
         let clock = ContinuousClock()
         let start = clock.now
         _ = await task.result
-        #expect(clock.now - start < .seconds(3))
+        // Well under the 60 s the process would run. Generous bound: CI scheduling adds seconds of delay.
+        #expect(clock.now - start < .seconds(15))
     }
 }

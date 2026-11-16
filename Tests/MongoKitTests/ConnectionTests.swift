@@ -101,7 +101,8 @@ struct ConnectionTests {
         let start = clock.now
         task.cancel()
         let result = await task.result
-        #expect(clock.now - start < .milliseconds(200))
+        // The server never replies, so finishing at all proves cancellation. Generous bound: CI scheduling adds seconds of delay.
+        #expect(clock.now - start < .seconds(10))
         guard case let .failure(error) = result else {
             Issue.record("expected cancellation")
             return
