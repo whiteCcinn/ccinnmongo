@@ -58,7 +58,7 @@ public struct SemanticVersion: Sendable, Hashable, Comparable, CustomStringConve
 
     public var description: String {
         let core = "\(major).\(minor).\(patch)"
-        return preRelease.isEmpty ? core : core + "-" + preRelease.joined(separator: ".")
+        return preRelease.isEmpty ? core : "\(core)-\(preRelease.joined(separator: "."))"
     }
 
     public static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
