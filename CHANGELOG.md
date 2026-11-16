@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-16
+
 ### Added
 
 - **Check for Updates…** in the app menu. When a newer release exists, CcinnMongo shows its version and release notes. **Download & Open** downloads the disk image, verifies its size and SHA-256 against the release's `SHA256SUMS.txt`, saves it to Downloads without overwriting anything, and opens it. **Release Page**, **Skip This Version** and **Later** are also available.
@@ -45,6 +47,7 @@ First public release.
 - Server overview, live performance charts and a command console.
 - Optional AI assistant powered by locally installed Claude Code or Codex CLI: natural-language query and pipeline generation, plus interactive read-only Q&A over the data.
 
-[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/whiteCcinn/ccinnmongo/releases/tag/v1.0.0
