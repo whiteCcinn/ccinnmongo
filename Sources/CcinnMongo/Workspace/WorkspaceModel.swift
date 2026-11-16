@@ -89,6 +89,8 @@ final class WorkspaceModel {
     let client: MongoClient
     let serverInfo: ServerInfo
     let tunnel: SSHTunnel?
+    /// What this window connected with (memory only), so New Window with This Connection can connect the same way.
+    let credentials: ConnectionCredentials
 
     var databases: [DatabaseNode] = []
     var isLoadingDatabases = false
@@ -99,11 +101,12 @@ final class WorkspaceModel {
     var toast: Toast?
     var isShutDown = false
 
-    init(profile: ConnectionProfile, client: MongoClient, serverInfo: ServerInfo, tunnel: SSHTunnel?) {
+    init(profile: ConnectionProfile, client: MongoClient, serverInfo: ServerInfo, tunnel: SSHTunnel?, credentials: ConnectionCredentials) {
         self.profile = profile
         self.client = client
         self.serverInfo = serverInfo
         self.tunnel = tunnel
+        self.credentials = credentials
         Task { await refreshDatabases() }
     }
 

@@ -8,8 +8,9 @@ struct CcinnMongoApp: App {
     @AppStorage("appearance") private var appearance = AppearancePreference.system.rawValue
 
     var body: some Scene {
-        WindowGroup("CcinnMongo", id: "main") {
-            RootView()
+        // Every window has its own connection. A request opens a window that connects right away.
+        WindowGroup("CcinnMongo", id: RootView.windowGroupID, for: WindowRequest.self) { $request in
+            RootView(request: request)
                 .frame(minWidth: 980, minHeight: 620)
                 .preferredColorScheme(AppearancePreference(rawValue: appearance)?.colorScheme)
                 .tint(Theme.accent)
@@ -77,8 +78,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 /// Per-window root: connection manager, progress, or workspace.
 struct RootView: View {
+    static let windowGroupID = "main"
+
+    /// Set when the window was opened for a connection (Open in New Window, New Window with This Connection),
+    /// or restored by macOS from such a window.
+    let request: WindowRequest?
     @State private var session = WindowSession()
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     private let store = AppServices.shared.profiles
 
     var body: some View {
@@ -101,7 +108,10 @@ struct RootView: View {
         .onDisappear { session.disconnect() }
         .presentsSoftwareUpdates()
         .task {
-            LaunchArguments.consume(into: session)
+            // A window this process opened for a connection connects to it. Any other window (the first one,
+            // File ▸ New Window, or a window macOS restored) starts on the connection screen, as before.
+            if let request, session.connect(request, store: store) { return }
+            LaunchArguments.consume(into: session) { openWindow(id: Self.windowGroupID, value: $0) }
             LaunchArguments.openSettingsOnce(openSettings)
         }
     }
@@ -125,6 +135,7 @@ struct RootView: View {
 
 /// Developer conveniences / deep links:
 /// `CcinnMongo --connect <uri> [--namespace db.collection] [--section documents|aggregations|schema|indexes|explain] [--view list|json|table]`
+/// `[--duplicate-window]` also opens a second window connected the same way (New Window with This Connection);
 /// `CcinnMongo --settings general|ai|mcp` opens the Settings window on that pane;
 /// `CcinnMongo --editor-section general|authentication|tls|ssh|advanced|ai` selects the connection editor pane.
 @MainActor
@@ -155,7 +166,7 @@ enum LaunchArguments {
     }
 
 
-    static func consume(into session: WindowSession) {
+    static func consume(into session: WindowSession, openWindow: @escaping @MainActor (WindowRequest) -> Void) {
         guard !consumed else { return }
         consumed = true
         let arguments = ProcessInfo.processInfo.arguments
@@ -168,6 +179,7 @@ enum LaunchArguments {
         let section = value("--section").flatMap { name in CollectionTabModel.Section.allCases.first { $0.rawValue.lowercased().hasPrefix(name.lowercased()) } }
         let view = value("--view").flatMap { DocumentViewMode(rawValue: $0.capitalized) ?? ($0.lowercased() == "json" ? .json : nil) }
         session.connect(uri: uri) { workspace in
+            if arguments.contains("--duplicate-window"), let request = session.duplicateRequest() { openWindow(request) }
             if let namespace {
                 workspace.openCollection(namespace, info: nil, section: section)
                 guard case let .collection(model)? = workspace.selectedTab?.kind else { return }
@@ -206,8 +218,9 @@ enum LaunchArguments {
     }
 }
 
-/// `--snapshot <file.png> [--snapshot-delay seconds] [--quit-after-snapshot]`: renders the key window
-/// into a PNG (used for automated visual checks; needs no screen-recording permission).
+/// `--snapshot <file.png> [--snapshot-delay seconds] [--quit-after-snapshot]`: renders the frontmost window
+/// (the newest one after `--duplicate-window`) into a PNG (used for automated visual checks; needs no
+/// screen-recording permission).
 @MainActor
 enum SnapshotTool {
     static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("--snapshot") }
@@ -225,7 +238,10 @@ enum SnapshotTool {
         let wantsSettings = LaunchArguments.settingsTab != nil
         let wantsUpdates = arguments.contains("--check-updates")
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            let visible = NSApp.windows.filter { $0.isVisible && $0.contentView != nil && $0.frame.width > 400 }
+            // Front to back, so the window opened last (and key) comes first; then any window `orderedWindows` skips.
+            let ordered = NSApp.orderedWindows
+            let visible = (ordered + NSApp.windows.filter { !ordered.contains($0) })
+                .filter { $0.isVisible && $0.contentView != nil && $0.frame.width > 400 }
             let settings = visible.first { $0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true }
             let updates = visible.first { $0.title == "Software Update" }
             if let window = (wantsUpdates ? updates : nil) ?? (wantsSettings ? settings ?? NSApp.keyWindow : nil) ?? visible.first,
@@ -298,9 +314,17 @@ extension FocusedValues {
 
 struct AppCommands: Commands {
     @FocusedValue(\.windowSession) private var session
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
+            // File ▸ New Window (⌘N) comes from the window group and opens the connection screen.
+            Button("New Window with This Connection") {
+                if let request = session?.duplicateRequest() { openWindow(id: RootView.windowGroupID, value: request) }
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .disabled(session?.workspace == nil)
+            Divider()
             Button("Disconnect") { session?.disconnect() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
                 .disabled(session?.workspace == nil)
