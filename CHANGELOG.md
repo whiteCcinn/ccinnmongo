@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple windows, easy to find.** Every window has its own connection.
+  - **File → New Window with This Connection** (⇧⌘N), also the **New Window** toolbar button in a connected window, opens another window connected the same way. It reuses the credentials already in use, in memory only, so it also works for connections opened with `--connect` and for passwords that are not saved. SSH connections get their own tunnel.
+  - **Open in New Window** in a saved connection's context menu.
+  - A **New Window** toolbar button on the connection screen (same as **File → New Window**, ⌘N).
+  - Closing a window disconnects only that window. Windows that macOS reopens after a restart show the connection screen and never connect by themselves.
+- `--duplicate-window` launch argument (with `--connect`) for automated checks.
+
+### Changed
+
+- `--snapshot` renders the frontmost window.
+
+### Fixed
+
+- Cancelling while a `--connect` launch connection is opening no longer leaves the window connected.
+
 ## [1.2.0] - 2026-11-16
 
 ### Added

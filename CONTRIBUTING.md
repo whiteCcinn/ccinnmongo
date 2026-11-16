@@ -45,6 +45,8 @@ dist/CcinnMongo.app/Contents/MacOS/CcinnMongo \
   --namespace shop.orders --section aggregations
 ```
 
+Add `--duplicate-window` to also open a second window connected the same way (New Window with This Connection).
+
 ## Project layout
 
 | Module | Responsibility |

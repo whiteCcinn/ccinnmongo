@@ -44,6 +44,7 @@ CcinnMongo ships its **own pure-Swift MongoDB stack** — BSON codec, wire proto
 - **Indexes** — list with sizes and usage statistics, create (compound, unique, sparse, TTL, partial, text, geo, hashed, hidden) and drop.
 - **Explain plan** — summary metrics and a visual stage tree for classic, slot-based (SBE) and legacy 2.6 explain formats.
 - **Server tools** — server overview, live performance charts and a command console.
+- **Multiple windows** — every window has its own connection: open the current connection again in another window, open a saved connection in a new window, or work on several servers side by side; see [Windows](#windows).
 - **AI assistant** *(optional)* — ask questions in plain language using your locally installed **Claude Code** or **Codex CLI**; see [AI assistant](#ai-assistant).
 - **MCP server for AI clients** *(optional)* — let Claude Code, Claude Desktop, Codex and other MCP clients query the connections you enable, read-only by default; see [MCP server / AI access](#mcp-server--ai-access).
 - **Secure by default** — passwords are stored in the macOS Keychain; nothing is collected or sent anywhere unless you use the AI assistant or enable MCP access.
@@ -98,7 +99,17 @@ The project page, release notes and issue tracker are also in the **Help** menu 
 2. Press **Test** to check connectivity, then **Save & Connect**.
 3. Pick a collection in the sidebar. Type a filter such as `{ status: "paid", total: { $gt: 100 } }` and press **Return**.
 
-Useful shortcuts: **⌘↩** run query or pipeline · **⌘R** refresh · **⌥⌘←/→** previous/next page · **⇧⌘K** command console · **⇧⌘D** disconnect · **⇧⌘[ / ]** switch tabs.
+Useful shortcuts: **⌘↩** run query or pipeline · **⌘R** refresh · **⌥⌘←/→** previous/next page · **⇧⌘K** command console · **⇧⌘D** disconnect · **⇧⌘[ / ]** switch tabs · **⌘N** new window · **⇧⌘N** new window with this connection.
+
+### Windows
+
+Every window has its own connection, so you can keep a long aggregation running in one window and watch Performance in another, or compare two servers side by side.
+
+- **File → New Window** (⌘N), or the **New Window** button on the connection screen, opens a window on the connection screen.
+- **File → New Window with This Connection** (⇧⌘N), or the **New Window** toolbar button in a connected window, opens another window connected the same way. It reuses the credentials already in use, in memory only, so it also works for connections opened with `--connect` and passwords you did not save. A connection through an SSH tunnel gets its own tunnel.
+- **Open in New Window** in a saved connection's context menu connects a new window to it.
+
+Closing a window disconnects only that window. When macOS reopens windows after a restart, they show the connection screen and do not connect by themselves.
 
 ## AI assistant
 
