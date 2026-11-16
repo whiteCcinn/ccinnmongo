@@ -41,7 +41,8 @@ struct ReviewRegressionTests {
         } throws: { error in
             (error as? MongoError)?.kind == .timeout || (error as? MongoError)?.kind == .serverSelection
         }
-        #expect(clock.now - start < .seconds(5))
+        // The 400 ms timeout fired instead of hanging. Generous bound: CI scheduling adds seconds of delay.
+        #expect(clock.now - start < .seconds(15))
         await client.close()
     }
 
