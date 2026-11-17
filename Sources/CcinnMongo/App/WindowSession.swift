@@ -116,11 +116,11 @@ final class WindowSession {
         phase = .connections
     }
 
+    /// Ends whatever the window is doing: shuts down the workspace and stops a connection that is still being opened
+    /// (closing a window while it connects must not leave a client and an SSH tunnel running for no window).
     func disconnect() {
-        if let workspace {
-            workspace.shutdown()
-        }
-        phase = .connections
+        workspace?.shutdown()
+        cancelConnecting()
     }
 }
 

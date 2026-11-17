@@ -108,6 +108,8 @@ struct RootView: View {
         .onDisappear { session.disconnect() }
         .presentsSoftwareUpdates()
         .task {
+            // Closed before this ran: `onDisappear` has already disconnected, so start nothing.
+            guard !Task.isCancelled else { return }
             // A window this process opened for a connection connects to it. Any other window (the first one,
             // File ▸ New CcinnMongo Window, or a window macOS restored) starts on the connection screen, as before.
             if let request, session.connect(request, store: store) { return }
