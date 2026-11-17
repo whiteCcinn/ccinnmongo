@@ -165,6 +165,10 @@ public final class SSHTunnel: Sendable {
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=\(max(1, connectTimeout))",
             "-o", "NumberOfPasswordPrompts=1",
+            // Never become a connection-sharing master (`ControlMaster auto` in ~/.ssh/config): another tunnel's
+            // forward would then live inside this process and break when this one closes. A master the user
+            // already runs is still used.
+            "-o", "ControlMaster=no",
             "-L", "127.0.0.1:\(localPort):\(remoteHost):\(remote.port)",
             "-p", String(configuration.port),
         ]

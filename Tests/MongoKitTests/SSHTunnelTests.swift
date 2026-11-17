@@ -17,6 +17,16 @@ struct SSHTunnelTests {
         #expect(arguments.last == "deploy@bastion.example.com")
     }
 
+    @Test func tunnelsNeverBecomeASharedMaster() throws {
+        // With `ControlMaster auto` in ~/.ssh/config, one window's ssh would become the master and another window's
+        // forward would live inside it, so closing the first window would break the second.
+        let configuration = SSHTunnelConfiguration(host: "bastion", username: "deploy", authentication: .agent)
+        let arguments = try SSHTunnel.arguments(for: configuration, localPort: 40002, remote: ServerAddress(host: "db", port: 27017))
+        let index = try #require(arguments.firstIndex(of: "ControlMaster=no"))
+        #expect(index > 0 && arguments[index - 1] == "-o")
+        #expect(arguments.last == "deploy@bastion")
+    }
+
     @Test func passwordAuthenticationDisablesPublicKeys() throws {
         let configuration = SSHTunnelConfiguration(host: "b", username: "u", authentication: .password)
         let arguments = try SSHTunnel.arguments(for: configuration, localPort: 1, remote: ServerAddress(host: "::1", port: 27018))
