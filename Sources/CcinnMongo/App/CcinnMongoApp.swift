@@ -109,7 +109,7 @@ struct RootView: View {
         .presentsSoftwareUpdates()
         .task {
             // A window this process opened for a connection connects to it. Any other window (the first one,
-            // File ▸ New Window, or a window macOS restored) starts on the connection screen, as before.
+            // File ▸ New CcinnMongo Window, or a window macOS restored) starts on the connection screen, as before.
             if let request, session.connect(request, store: store) { return }
             LaunchArguments.consume(into: session) { openWindow(id: Self.windowGroupID, value: $0) }
             LaunchArguments.openSettingsOnce(openSettings)
@@ -318,7 +318,7 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            // File ▸ New Window (⌘N) comes from the window group and opens the connection screen.
+            // File ▸ New CcinnMongo Window (⌘N) comes from the window group and opens the connection screen.
             Button("New Window with This Connection") {
                 if let request = session?.duplicateRequest() { openWindow(id: RootView.windowGroupID, value: request) }
             }

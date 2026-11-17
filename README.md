@@ -105,7 +105,7 @@ Useful shortcuts: **⌘↩** run query or pipeline · **⌘R** refresh · **⌥�
 
 Every window has its own connection, so you can keep a long aggregation running in one window and watch Performance in another, or compare two servers side by side.
 
-- **File → New Window** (⌘N), or the **New Window** button on the connection screen, opens a window on the connection screen.
+- **File → New CcinnMongo Window** (⌘N), or the **New Window** button on the connection screen, opens a window on the connection screen.
 - **File → New Window with This Connection** (⇧⌘N), or the **New Window** toolbar button in a connected window, opens another window connected the same way. It reuses the credentials already in use, in memory only, so it also works for connections opened with `--connect` and passwords you did not save. A connection through an SSH tunnel gets its own tunnel.
 - **Open in New Window** in a saved connection's context menu connects a new window to it.
 
