@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-17
+
+### Fixed
+
+- Closing a window while it is still connecting now stops that connection and its SSH tunnel, instead of leaving them open with no window.
+- SSH tunnels no longer become an OpenSSH connection-sharing master when `~/.ssh/config` sets `ControlMaster auto`, so closing one window can't break another window's tunnel to the same host. A master you started yourself is still used.
+- A connection handed to a new window (New Window with This Connection, Open in New Window) is dropped from memory after a minute if no window takes it, so its credentials don't stay in memory until the app quits.
+
 ## [1.3.0] - 2026-11-17
 
 ### Added
@@ -66,7 +74,8 @@ First public release.
 - Server overview, live performance charts and a command console.
 - Optional AI assistant powered by locally installed Claude Code or Codex CLI: natural-language query and pipeline generation, plus interactive read-only Q&A over the data.
 
-[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.0.0...v1.1.0
