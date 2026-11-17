@@ -36,10 +36,41 @@ struct WindowHandoffTests {
         #expect(handoff.pendingCount == 0)
     }
 
+    @Test func unclaimedPayloadsExpireSoTheirSecretsDoNotLinger() {
+        let clock = ManualClock()
+        let handoff = WindowHandoff<String>(lifetime: .seconds(60), now: { clock.now })
+        let abandoned = handoff.request(profileID: UUID(), payload: "password of a window that never opened")
+        clock.advance(by: .seconds(61))
+        let fresh = handoff.request(profileID: UUID(), payload: "fresh")
+        #expect(handoff.pendingCount == 1)
+        #expect(handoff.take(abandoned) == nil)
+        #expect(handoff.take(fresh) == "fresh")
+    }
+
+    @Test func aPayloadIsDeliveredWithinItsLifetimeButNotAfter() {
+        let clock = ManualClock()
+        let handoff = WindowHandoff<Int>(lifetime: .seconds(60), now: { clock.now })
+        let prompt = handoff.request(profileID: UUID(), payload: 1)
+        let late = handoff.request(profileID: UUID(), payload: 2)
+        clock.advance(by: .seconds(59))
+        #expect(handoff.take(prompt) == 1)
+        clock.advance(by: .seconds(2))
+        #expect(handoff.take(late) == nil)
+        #expect(handoff.pendingCount == 0)
+    }
+
     @Test func aDecodedCopyOfAHandedOffRequestStillFindsItsPayload() throws {
         let handoff = WindowHandoff<String>()
         let request = handoff.request(profileID: UUID(), payload: "value")
         let copy = try JSONDecoder().decode(WindowRequest.self, from: JSONEncoder().encode(request))
         #expect(handoff.take(copy) == "value")
     }
+}
+
+/// A clock the test moves by hand.
+@MainActor
+private final class ManualClock {
+    private(set) var now = ContinuousClock.now
+
+    func advance(by duration: Duration) { now += duration }
 }
