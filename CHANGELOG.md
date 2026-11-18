@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-18
+
+### Fixed
+
+- SSH tunnels no longer use an OpenSSH connection-sharing master either. With `ControlMaster auto` and a `ControlPath` in `~/.ssh/config` and a master of yours running, a tunnel joined that master instead of connecting itself: the master held the tunnel's local port, which stayed open and kept forwarding to MongoDB after the window closed, every connect left one more such port behind, and the SSH password or key chosen in the connection was never used. Tunnels now also pass `-o ControlPath=none`; your own ssh sessions keep using your master.
+
 ## [1.3.1] - 2026-11-17
 
 ### Fixed
@@ -74,7 +80,8 @@ First public release.
 - Server overview, live performance charts and a command console.
 - Optional AI assistant powered by locally installed Claude Code or Codex CLI: natural-language query and pipeline generation, plus interactive read-only Q&A over the data.
 
-[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/whiteCcinn/ccinnmongo/compare/v1.1.0...v1.2.0
