@@ -53,7 +53,7 @@ public actor MCPConnectionManager: MCPSessionSource {
                 do {
                     return try await opener.open(profile)
                 } catch {
-                    await self.discardFailedOpening(profile.id, token: token)
+                    self.discardFailedOpening(profile.id, token: token)
                     throw error
                 }
             }

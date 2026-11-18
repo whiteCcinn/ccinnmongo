@@ -217,7 +217,7 @@ struct ShellSyntaxParserTests {
     @Test func deepNestingIsRejectedNotCrashing() async {
         let depth = BSONLimits.maximumDepth + 10
         let text = String(repeating: "{a: ", count: depth) + "1" + String(repeating: "}", count: depth)
-        await Task.detached {
+        _ = await Task.detached {
             #expect(throws: SyntaxError.self) { try ShellSyntax.parseDocument(text) }
         }.value
     }
