@@ -165,10 +165,15 @@ public final class SSHTunnel: Sendable {
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=\(max(1, connectTimeout))",
             "-o", "NumberOfPasswordPrompts=1",
-            // Never become a connection-sharing master (`ControlMaster auto` in ~/.ssh/config): another tunnel's
-            // forward would then live inside this process and break when this one closes. A master the user
-            // already runs is still used.
+            // Never become or use a connection-sharing master. With `ControlMaster auto` in ~/.ssh/config this tunnel
+            // would become the master, and another tunnel's forward would live inside it and break when it closes.
+            // `ControlMaster=no` alone still joins a running master as a mux client: the master then owns the
+            // forwarded listener, which outlives this tunnel and keeps forwarding to MongoDB until the master exits,
+            // each connect leaks another forward, and the profile's authentication is bypassed. `ControlPath=none`
+            // (command-line values beat ~/.ssh/config) makes this ssh connect and own its listener itself; the
+            // user's own ssh sessions keep their master.
             "-o", "ControlMaster=no",
+            "-o", "ControlPath=none",
             "-L", "127.0.0.1:\(localPort):\(remoteHost):\(remote.port)",
             "-p", String(configuration.port),
         ]

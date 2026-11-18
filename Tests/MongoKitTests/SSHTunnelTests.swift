@@ -17,14 +17,43 @@ struct SSHTunnelTests {
         #expect(arguments.last == "deploy@bastion.example.com")
     }
 
-    @Test func tunnelsNeverBecomeASharedMaster() throws {
+    @Test(arguments: SSHTunnelConfiguration.Authentication.allCases)
+    func tunnelsNeverUseOrBecomeASharedMaster(authentication: SSHTunnelConfiguration.Authentication) throws {
         // With `ControlMaster auto` in ~/.ssh/config, one window's ssh would become the master and another window's
-        // forward would live inside it, so closing the first window would break the second.
-        let configuration = SSHTunnelConfiguration(host: "bastion", username: "deploy", authentication: .agent)
+        // forward would live inside it, so closing the first window would break the second. `ControlMaster=no` alone
+        // still let the tunnel attach to a running master as a mux client: the master then owned the forwarded
+        // listener, which outlived the tunnel and bypassed the profile's authentication.
+        let configuration = SSHTunnelConfiguration(host: "bastion", username: "deploy", authentication: authentication,
+                                                   privateKeyPath: "~/.ssh/id_ed25519")
         let arguments = try SSHTunnel.arguments(for: configuration, localPort: 40002, remote: ServerAddress(host: "db", port: 27017))
-        let index = try #require(arguments.firstIndex(of: "ControlMaster=no"))
-        #expect(index > 0 && arguments[index - 1] == "-o")
+        #expect(Self.sshOptionValues("ControlMaster", in: arguments) == ["no"])
+        #expect(Self.sshOptionValues("ControlPath", in: arguments) == ["none"], "no other ControlPath")
+        // `-S ctl_path` and `-M` are the command-line spellings of ControlPath and ControlMaster.
+        #expect(!arguments.contains { $0.hasPrefix("-S") || $0.hasPrefix("-M") })
+        // ssh reads everything after the destination as the remote command.
         #expect(arguments.last == "deploy@bastion")
+    }
+
+    /// The values ssh reads for `keyword` from `-o key=value`, `-o "key value"` and `-okey=value`; keywords are
+    /// case-insensitive, as in ssh.
+    private static func sshOptionValues(_ keyword: String, in arguments: [String]) -> [String] {
+        var specifications: [String] = []
+        var index = arguments.startIndex
+        while index < arguments.endIndex {
+            let argument = arguments[index]
+            if argument == "-o", arguments.index(after: index) < arguments.endIndex {
+                specifications.append(arguments[arguments.index(after: index)])
+                index = arguments.index(index, offsetBy: 2)
+                continue
+            }
+            if argument.hasPrefix("-o") { specifications.append(String(argument.dropFirst(2))) }
+            index = arguments.index(after: index)
+        }
+        return specifications.compactMap { specification in
+            guard let separator = specification.firstIndex(where: { $0 == "=" || $0.isWhitespace }),
+                  specification[..<separator].caseInsensitiveCompare(keyword) == .orderedSame else { return nil }
+            return specification[specification.index(after: separator)...].trimmingCharacters(in: .whitespaces)
+        }
     }
 
     @Test func passwordAuthenticationDisablesPublicKeys() throws {
